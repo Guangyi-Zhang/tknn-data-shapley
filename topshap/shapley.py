@@ -1,6 +1,20 @@
 import numpy as np
 
 
+def distance(x, y):
+    """
+    Compute the Euclidean distance between two points.
+    """
+    return np.linalg.norm(x - y)
+
+
+def kernel_value(d, sigma):
+    """
+    Compute the Gaussian kernel value for a given distance.
+    """
+    return np.exp(-d**2 / (2 * sigma**2))    
+
+
 def shapley_top(D, Z_test, t, K, sigma):
     """
     Compute top-t Shapley values using landmark-based ball expansion.
@@ -25,7 +39,7 @@ def shapley_top(D, Z_test, t, K, sigma):
     augmented = [(*z, idx, True) for idx, z in enumerate(Z_test)] + [(*z, idx, False) for idx, z in enumerate(D)]
     
     # Compute distances to landmark and sort
-    distances = [np.linalg.norm(x - landmark) for x, _, _, _ in augmented]
+    distances = [distance(x, landmark) for x, _, _, _ in augmented]
     sorted_inds = np.argsort(distances)
     sorted_aug = [augmented[i] for i in sorted_inds]
     
@@ -69,13 +83,13 @@ def shapley_top(D, Z_test, t, K, sigma):
                 # Compute a lower bound on dist_to_test for points outside the ball
                 if not is_test and not try_first:
                     try_first = True
-                    dist_to_landmark = np.linalg.norm(x - landmark)
-                    dist_test_to_landmark = np.linalg.norm(x_test - landmark)
+                    dist_to_landmark = distance(x, landmark)
+                    dist_test_to_landmark = distance(x_test, landmark)
                     dist_left = abs(dist_to_landmark - dist_test_to_landmark)
                 if not is_test and not try_last:
                     try_last = True
-                    dist_to_landmark = np.linalg.norm(x - landmark)
-                    dist_test_to_landmark = np.linalg.norm(x_test - landmark)
+                    dist_to_landmark = distance(x, landmark)
+                    dist_test_to_landmark = distance(x_test, landmark)
                     dist_right = abs(dist_to_landmark - dist_test_to_landmark)
 
             # Skip if no new points
@@ -83,7 +97,7 @@ def shapley_top(D, Z_test, t, K, sigma):
                 continue
 
             # Compute distances to current test point
-            dists = [(np.linalg.norm(x - x_test), x, y, dataidx) for x, y, dataidx in processed[test_idx]]
+            dists = [(distance(x, x_test), x, y, dataidx) for x, y, dataidx in processed[test_idx]]
             sorted_ball = sorted(dists, key=lambda x: x[0])
 
             # Compute |barB_i(z_test)| for points whose local rank equals global rank
@@ -94,10 +108,10 @@ def shapley_top(D, Z_test, t, K, sigma):
                 if d <= dist_radius:
                     bar_ball_size += 1
                 else:
-                    kernel_val_max_in_ball = max(kernel_val_max_in_ball, np.exp(-d**2 / (2 * sigma**2)))
+                    kernel_val_max_in_ball = max(kernel_val_max_in_ball, kernel_value(d, sigma))
             
             # Compute lower bound on weight for points not in ball
-            kernel_val_out_of_ball = np.exp(-dist_radius**2 / (2 * sigma**2))
+            kernel_val_out_of_ball = kernel_value(dist_radius, sigma)
             kernel_val_for_bound = max(kernel_val_max_in_ball, kernel_val_out_of_ball)
             
             # Compute base upper bound 
@@ -109,7 +123,7 @@ def shapley_top(D, Z_test, t, K, sigma):
             
             # Compute point-specific bounds
             for rank, (d, x, y, dataidx) in enumerate(sorted_ball, 1): # rank is 1-based
-                w = np.exp(-d**2 / (2 * sigma**2))
+                w = kernel_value(d, sigma)
                 j0 = max(K, rank + 1)
                 ub = min(K, rank) * w * (1 if y == y_test else 0) / rank if rank > 0 else w * (1 if y == y_test else 0)
                 if d <= dist_radius:
@@ -187,12 +201,12 @@ def shapley_bf_single(D, z_test, K, sigma):
     
     # Calculate distances and sort
     sorted_D = sorted(
-        [(np.linalg.norm(x - x_test), x, y) for x, y in D],
+        [(distance(x, x_test), x, y) for x, y in D],
         key=lambda x: x[0]
     )
     
     # Extract weights and label matches
-    w = [np.exp(-d**2/(2*sigma**2)) for d, _, _ in sorted_D]
+    w = [kernel_value(d, sigma) for d, _, _ in sorted_D]
     y_match = [1 if y == y_test else 0 for _, _, y in sorted_D]
     
     # Initialize Shapley values array
