@@ -16,6 +16,53 @@ def kernel_value(d, sigma):
     return np.exp(-d**2 / (2 * sigma**2))    
 
 
+Point = namedtuple('Point', ['x', 'y', 'idx', 'is_test'])
+
+
+class Processed:
+    def __init__(self):
+        self.ids = set()
+        self.pts = []
+
+
+def build_ball(pt_test, i, sorted_aug, testidx2augidx, processed, landmark):
+    """
+    Build a ball of radius i around z_test along the sorted augmented list.
+    """
+    x_test, y_test = pt_test.x, pt_test.y
+    pos = testidx2augidx[pt_test.idx]
+    
+    # Get ball boundaries
+    start = max(0, pos - i)
+    end = min(len(sorted_aug), pos + i + 1) # +1 for exclusive end
+    new_points = []
+    
+    # Collect new data points in expanded ball
+    try_first, try_last = False, False
+    dist_left, dist_right = 0, 0
+    for idx in range(start, end):
+        x, y, dataidx, is_test = sorted_aug[idx]
+        if not is_test and dataidx not in processed[pt_test.idx].ids:
+            processed[pt_test.idx].ids.add(dataidx)
+            processed[pt_test.idx].pts.append(Point(x, y, dataidx, False))
+            new_points.append(Point(x, y, dataidx, False))
+
+        # Compute a lower bound on dist_to_test for points outside the ball
+        if not is_test and not try_first:
+            try_first = True
+            dist_to_landmark = distance(x, landmark)
+            dist_test_to_landmark = distance(x_test, landmark)
+            dist_left = abs(dist_to_landmark - dist_test_to_landmark)
+        if not is_test and not try_last:
+            try_last = True
+            dist_to_landmark = distance(x, landmark)
+            dist_test_to_landmark = distance(x_test, landmark)
+            dist_right = abs(dist_to_landmark - dist_test_to_landmark)
+    
+    dist_radius = min(dist_left, dist_right)
+    return new_points, dist_radius
+
+
 def shapley_top(D, Z_test, t, K, sigma):
     """
     Compute top-t Shapley values using landmark-based ball expansion.
@@ -37,7 +84,6 @@ def shapley_top(D, Z_test, t, K, sigma):
     landmark = Z_test[0][0]
     
     # Create augmented list with test markers
-    Point = namedtuple('Point', ['x', 'y', 'idx', 'is_test'])
     augmented = [Point(*z, idx, True) for idx, z in enumerate(Z_test)] + [Point(*z, idx, False) for idx, z in enumerate(D)]
     
     # Compute distances to landmark and sort
@@ -50,11 +96,8 @@ def shapley_top(D, Z_test, t, K, sigma):
         
     # Initialize bounds
     n = len(D)
-    lower = np.zeros(n)
-    upper = np.zeros(n)
-    processed_ids = [set() for _ in Z_test]  # Track processed data per test point
-    processed = [[] for _ in Z_test]
-    lbs_base, ups_base = np.zeros(len(Z_test)), np.zeros(len(Z_test))
+    processed = [Processed() for _ in Z_test] # Track processed data per test point
+    lbs_base, ups_base = np.zeros(len(Z_test)), np.zeros(len(Z_test)) # base bounds
     bounds_point = [[] for _ in D] # each entry in [] is (test_idx, lower_bound, upper_bound)
 
     i = 1 # ball radius
@@ -62,46 +105,15 @@ def shapley_top(D, Z_test, t, K, sigma):
         
         for test_idx, z_test in enumerate(Z_test):
             x_test, y_test = z_test
-            pos = testidx2augidx[test_idx]
-            
-            # Get ball boundaries
-            start = max(0, pos - i)
-            end = min(len(sorted_aug), pos + i + 1) # +1 for exclusive end
-            new_points = []
-            
-            # Collect new data points in expanded ball
-            try_first, try_last = False, False
-            dist_left, dist_right = 0, 0
-            for idx in range(start, end):
-                x, y, dataidx, is_test = sorted_aug[idx]
-                if not is_test and dataidx not in processed_ids[test_idx]:
-                    processed_ids[test_idx].add(dataidx)
-                    processed[test_idx].append((x, y, dataidx))
-                    new_points.append((x, y, dataidx))
-
-                # Compute a lower bound on dist_to_test for points outside the ball
-                if not is_test and not try_first:
-                    try_first = True
-                    dist_to_landmark = distance(x, landmark)
-                    dist_test_to_landmark = distance(x_test, landmark)
-                    dist_left = abs(dist_to_landmark - dist_test_to_landmark)
-                if not is_test and not try_last:
-                    try_last = True
-                    dist_to_landmark = distance(x, landmark)
-                    dist_test_to_landmark = distance(x_test, landmark)
-                    dist_right = abs(dist_to_landmark - dist_test_to_landmark)
-
-            # Skip if no new points
-            if not new_points:
-                continue
+            new_points, dist_radius = build_ball(Point(*z_test, test_idx, True), i, sorted_aug, 
+                                                 testidx2augidx, processed, landmark)
 
             # Compute distances to current test point
-            dists = [(distance(x, x_test), x, y, dataidx) for x, y, dataidx in processed[test_idx]]
+            dists = [(distance(x, x_test), x, y, dataidx) for x, y, dataidx, _ in processed[test_idx].pts]
             sorted_ball = sorted(dists, key=lambda x: x[0])
 
             # Compute |barB_i(z_test)| for points whose local rank equals global rank
             bar_ball_size = 0
-            dist_radius = min(dist_left, dist_right)
             kernel_val_max_in_ball = 0
             for d, x, y, dataidx in sorted_ball:
                 if d <= dist_radius:
