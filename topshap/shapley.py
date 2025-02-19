@@ -1,4 +1,5 @@
 import numpy as np
+from collections import namedtuple
 
 
 def distance(x, y):
@@ -36,7 +37,8 @@ def shapley_top(D, Z_test, t, K, sigma):
     landmark = Z_test[0][0]
     
     # Create augmented list with test markers
-    augmented = [(*z, idx, True) for idx, z in enumerate(Z_test)] + [(*z, idx, False) for idx, z in enumerate(D)]
+    Point = namedtuple('Point', ['x', 'y', 'idx', 'is_test'])
+    augmented = [Point(*z, idx, True) for idx, z in enumerate(Z_test)] + [Point(*z, idx, False) for idx, z in enumerate(D)]
     
     # Compute distances to landmark and sort
     distances = [distance(x, landmark) for x, _, _, _ in augmented]
@@ -44,10 +46,7 @@ def shapley_top(D, Z_test, t, K, sigma):
     sorted_aug = [augmented[i] for i in sorted_inds]
     
     # Create data index mapping and test positions
-    testidx2augidx = dict()
-    for idx, z in enumerate(sorted_aug):
-        if z[3]:
-            testidx2augidx[z[2]] = idx
+    testidx2augidx = dict([(z.idx, idx) for idx, z in enumerate(sorted_aug) if z.is_test])
         
     # Initialize bounds
     n = len(D)
@@ -57,7 +56,7 @@ def shapley_top(D, Z_test, t, K, sigma):
     processed = [[] for _ in Z_test]
     lbs_base, ups_base = np.zeros(len(Z_test)), np.zeros(len(Z_test))
     bounds_point = [[] for _ in D] # each entry in [] is (test_idx, lower_bound, upper_bound)
-    
+
     i = 1 # ball radius
     while i <= len(sorted_aug):
         
