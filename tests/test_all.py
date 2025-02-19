@@ -16,3 +16,13 @@ def test_shapley_bf():
     answer = [0.8374, -0.0451,  0.0902]
 
     assert np.allclose(shapley_values, answer, atol=1e-03)
+
+    # Test multiple test points
+    Z_test = [
+        (np.array([0.0]), 1),
+        (np.array([0.0]), 1),
+    ]
+    shapley_values = shapley_bf(D, Z_test, K=2, sigma=1)
+    answer = [0.8374, -0.0451,  0.0902]
+
+    assert np.allclose(shapley_values, answer, atol=1e-03)

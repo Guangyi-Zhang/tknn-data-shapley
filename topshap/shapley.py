@@ -1,6 +1,23 @@
 import numpy as np
 
-def shapley_bf(D, z_test, K, sigma):
+
+def shapley_bf(D, Z_test, K, sigma):
+    """
+    Compute Shapley values for weighted KNN using brute force.
+    """
+    if not isinstance(Z_test, list):
+        return shapley_bf_single(D, Z_test, K, sigma)
+    
+    n_test = len(Z_test)
+    shapley_values = np.zeros(len(D))
+    for i in range(n_test):
+        s = shapley_bf_single(D, Z_test[i], K, sigma)
+        shapley_values += s
+
+    return shapley_values / n_test
+    
+
+def shapley_bf_single(D, z_test, K, sigma):
     """
     Compute Shapley values for weighted KNN using recursive formula.
     
