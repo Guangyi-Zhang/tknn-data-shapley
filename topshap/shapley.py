@@ -118,23 +118,23 @@ def shapley_top(D, Z_test, t, K, sigma):
 
             # Compute |barB_i(z_test)| for points whose local rank equals global rank
             bar_ball_size = 0
-            kernel_val_max_in_ball = 0
+            weight_max_in_ball = 0
             for d, x, y, dataidx in sorted_ball:
                 if d <= dist_radius:
                     bar_ball_size += 1
                 else:
-                    kernel_val_max_in_ball = max(kernel_val_max_in_ball, kernel_value(d, sigma))
+                    weight_max_in_ball = max(weight_max_in_ball, kernel_value(d, sigma))
             
             # Compute lower bound on weight for points not in ball
-            kernel_val_out_of_ball = kernel_value(dist_radius, sigma)
-            kernel_val_for_lb = max(kernel_val_max_in_ball, kernel_val_out_of_ball)
+            weight_out_of_ball = kernel_value(dist_radius, sigma)
+            weight_for_lb = max(weight_max_in_ball, weight_out_of_ball)
             
             # Compute base upper bound 
-            ups_base[test_idx] = min(K, bar_ball_size) * kernel_val_out_of_ball / bar_ball_size if bar_ball_size > 0 else kernel_val_out_of_ball
+            ups_base[test_idx] = min(K, bar_ball_size) * weight_out_of_ball / bar_ball_size if bar_ball_size > 0 else weight_out_of_ball
 
             # Compute base lower bound 
             j0 = max(K, bar_ball_size + 1)
-            lbs_base[test_idx] = - kernel_val_for_lb * (1/(j0 - 1) - 1/n)
+            lbs_base[test_idx] = - weight_for_lb * (1/(j0 - 1) - 1/n)
             
             # Compute point-specific bounds
             for rank, (d, x, y, dataidx) in enumerate(sorted_ball, 1): # rank is 1-based
@@ -146,7 +146,7 @@ def shapley_top(D, Z_test, t, K, sigma):
                 else:
                     rank_ = rank + n - bar_ball_size
                     term1 = min(K, rank_) * w * (1 if y == y_test else 0) / rank_ if rank_ > 0 else w * (1 if y == y_test else 0)
-                    lb = term1 - kernel_val_for_lb * (1/(j0 - 1) - 1/n) 
+                    lb = term1 - weight_for_lb * (1/(j0 - 1) - 1/n) 
 
                 bounds_point[dataidx].append((test_idx, lb, ub))
         
