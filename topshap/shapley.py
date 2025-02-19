@@ -38,7 +38,7 @@ def build_ball(pt_test, i, sorted_aug, testidx2augidx, processed, landmark):
     new_points = []
     
     # Collect new data points in expanded ball
-    try_first, try_last = False, False
+    try_first = False
     dist_left, dist_right = 0, 0
     for idx in range(start, end):
         x, y, dataidx, is_test = sorted_aug[idx]
@@ -47,17 +47,21 @@ def build_ball(pt_test, i, sorted_aug, testidx2augidx, processed, landmark):
             processed[pt_test.idx].pts.append(Point(x, y, dataidx, False))
             new_points.append(Point(x, y, dataidx, False))
 
-        # Compute a lower bound on dist_to_test for points outside the ball
+        # Compute a lower bound on dist_to_test for points outside the ball, left part
         if not is_test and not try_first:
             try_first = True
             dist_to_landmark = distance(x, landmark)
             dist_test_to_landmark = distance(x_test, landmark)
             dist_left = abs(dist_to_landmark - dist_test_to_landmark)
-        if not is_test and not try_last:
-            try_last = True
+
+    # Compute a lower bound on dist_to_test for points outside the ball, right part
+    for idx in range(end-1, pos, -1):
+        x, y, dataidx, is_test = sorted_aug[idx]
+        if not is_test:
             dist_to_landmark = distance(x, landmark)
             dist_test_to_landmark = distance(x_test, landmark)
             dist_right = abs(dist_to_landmark - dist_test_to_landmark)
+            break
     
     dist_radius = min(dist_left, dist_right)
     return new_points, dist_radius
@@ -123,14 +127,14 @@ def shapley_top(D, Z_test, t, K, sigma):
             
             # Compute lower bound on weight for points not in ball
             kernel_val_out_of_ball = kernel_value(dist_radius, sigma)
-            kernel_val_for_bound = max(kernel_val_max_in_ball, kernel_val_out_of_ball)
+            kernel_val_for_lb = max(kernel_val_max_in_ball, kernel_val_out_of_ball)
             
             # Compute base upper bound 
             ups_base[test_idx] = min(K, bar_ball_size) * kernel_val_out_of_ball / bar_ball_size if bar_ball_size > 0 else kernel_val_out_of_ball
 
             # Compute base lower bound 
             j0 = max(K, bar_ball_size + 1)
-            lbs_base[test_idx] = - kernel_val_for_bound * (1/(j0 - 1) - 1/n)
+            lbs_base[test_idx] = - kernel_val_for_lb * (1/(j0 - 1) - 1/n)
             
             # Compute point-specific bounds
             for rank, (d, x, y, dataidx) in enumerate(sorted_ball, 1): # rank is 1-based
@@ -142,7 +146,7 @@ def shapley_top(D, Z_test, t, K, sigma):
                 else:
                     rank_ = rank + n - bar_ball_size
                     term1 = min(K, rank_) * w * (1 if y == y_test else 0) / rank_ if rank_ > 0 else w * (1 if y == y_test else 0)
-                    lb = term1 - kernel_val_for_bound * (1/(j0 - 1) - 1/n) 
+                    lb = term1 - kernel_val_for_lb * (1/(j0 - 1) - 1/n) 
 
                 bounds_point[dataidx].append((test_idx, lb, ub))
         
