@@ -1,5 +1,5 @@
 import numpy as np
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 
 
 def distance(x, y):
@@ -122,9 +122,15 @@ def shapley_top(D, Z_test, t, K, sigma):
             # Compute |barB_i(z_test)| for points whose local rank equals global rank
             bar_ball_size = 0
             weight_max_in_ball = 0
-            for d, x, y, dataidx in sorted_ball:
+            term2_fixed = defaultdict(int) # keep the accumulated weighted terms
+            rank_fixed_max = 0
+            for rank, (d, x, y, dataidx) in enumerate(sorted_ball, 1): # rank is 1-based
                 if d <= dist_radius:
                     bar_ball_size += 1
+                    if rank > 1:
+                        w = kernel_value(d, sigma)
+                        term2_fixed[rank] = w * K / rank / (rank-1) + term2_fixed[rank-1]
+                        rank_fixed_max = max(rank_fixed_max, rank)
                 else:
                     weight_max_in_ball = max(weight_max_in_ball, kernel_value(d, sigma))
             
@@ -146,16 +152,21 @@ def shapley_top(D, Z_test, t, K, sigma):
             for rank, (d, x, y, dataidx) in enumerate(sorted_ball, 1): # rank is 1-based
                 w = kernel_value(d, sigma)
                 j0 = max(K, rank + 1)
-                ub = min(K, rank) * w * (1 if y == y_test else 0) / rank 
+
+                term1 = min(K, rank) * w * (1 if y == y_test else 0) / rank
+                term2 = term2_fixed[rank_fixed_max] - term2_fixed[j0-1] if rank_fixed_max >= j0 else 0
+                ub = term1 - term2
+
+                term2_lb = term2 + weight_for_lb * (1/(max(j0, rank_fixed_max+1) - 1) - 1/n)
                 if d <= dist_radius:
-                    lb = ub - w * (1/(j0 - 1) - 1/n) # TODO: improve the 2nd term
+                    lb = term1 - term2_lb
                 else:
                     rank_ = rank + n - len(sorted_ball)
                     term1 = min(K, rank_) * w * (1 if y == y_test else 0) / rank_ 
-                    lb = term1 - weight_for_lb * (1/(j0 - 1) - 1/n) 
+                    lb = term1 - term2_lb
 
                 bounds_point[dataidx].append((test_idx, lb, ub))
-                #print(f"bounds_point[{dataidx}]={(test_idx, lb, ub)}")
+                #print(f"bounds_point[{dataidx}]={(test_idx, lb, ub)}, term2={term2}")
         
         # Aggregate the base bounds
         lb_base, up_base = 0, 0
