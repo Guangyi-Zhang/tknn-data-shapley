@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 
-from topshap.shapley import shapley_bf, build_ball, Point, Processed
+from topshap.shapley import shapley_bf, build_ball, Point, Processed, shapley_top
 
 
 def test_build_ball():
@@ -63,6 +63,24 @@ def test_build_ball():
                                       processed=processed, landmark=landmark)
     assert len(new_points) == 3
     assert np.isclose(dist_radius, 1.5)
+
+
+def test_shapley_top():
+    D = [
+        (np.array([0.5]), 1),
+        (np.array([2.0]), 1),
+        (np.array([1.0]), 0)
+    ]
+    Z_test = [(np.array([0.0]), 1)]
+
+    top_idx = shapley_top(D, Z_test, t=1, K=2, sigma=1)
+    assert top_idx == [0]
+
+    top_idx = shapley_top(D, Z_test, t=2, K=2, sigma=1)
+    assert np.all(top_idx == [0, 1])
+
+    top_idx = shapley_top(D, Z_test, t=3, K=2, sigma=1)
+    assert top_idx == None # fail to find [0, 1, 2]
 
 
 def test_shapley_bf():

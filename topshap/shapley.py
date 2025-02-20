@@ -29,6 +29,7 @@ def build_ball(pt_test, i, sorted_aug, testidx2augidx, processed, landmark):
     """
     Build a ball of radius i around z_test along the sorted augmented list.
     """
+    # TODO: dist of test points also counts
     x_test, y_test = pt_test.x, pt_test.y
     pos = testidx2augidx[pt_test.idx]
     
@@ -99,26 +100,24 @@ def shapley_top(D, Z_test, t, K, sigma):
     # Create data index mapping and test positions
     testidx2augidx = dict([(z.idx, idx) for idx, z in enumerate(sorted_aug) if z.is_test])
         
-    # Initialize bounds
     n = len(D)
     processed = [Processed() for _ in Z_test] # Track processed data per test point
-    lbs_base, ups_base = np.zeros(len(Z_test)), np.zeros(len(Z_test)) # base bounds
-    bounds_point = [[] for _ in D] # each entry in [] is (test_idx, lower_bound, upper_bound)
-
     i = 1 # ball radius
     while i <= len(sorted_aug):
+        lbs_base, ups_base = np.zeros(len(Z_test)), np.zeros(len(Z_test)) # base bounds
+        bounds_point = [[] for _ in D] # each entry in [] is (test_idx, lower_bound, upper_bound)
         
         for test_idx, z_test in enumerate(Z_test):
             x_test, y_test = z_test
             new_points, dist_radius = build_ball(Point(*z_test, test_idx, True), i, sorted_aug, 
                                                  testidx2augidx, processed, landmark)
+            #print(f"i={i}, dist_radius={dist_radius}, processed[{test_idx}].ids={processed[test_idx].ids}")
 
             # Compute distances to current test point
             dists = [(distance(x, x_test), x, y, dataidx) for x, y, dataidx, _ in processed[test_idx].pts]
             sorted_ball = sorted(dists, key=lambda x: x[0])
-            dist_max = sorted_ball[-1][0]
-            if dist_radius == float('inf'): # no point is outside the ball
-                dist_radius = dist_max
+            if dist_radius == float('inf') and len(sorted_ball) > 0: # no point is outside the ball
+                dist_radius = sorted_ball[-1][0] # set to max dist
 
             # Compute |barB_i(z_test)| for points whose local rank equals global rank
             bar_ball_size = 0
@@ -132,33 +131,38 @@ def shapley_top(D, Z_test, t, K, sigma):
             # Compute lower bound on weight for points not in ball
             weight_out_of_ball = kernel_value(dist_radius, sigma)
             weight_for_lb = max(weight_max_in_ball, weight_out_of_ball)
+            #print(f"bar_ball_size={bar_ball_size}, weight_max_in_ball={weight_max_in_ball}, weight_for_lb={weight_for_lb}")
             
             # Compute base upper bound 
             ups_base[test_idx] = min(K, bar_ball_size) * weight_out_of_ball / bar_ball_size if bar_ball_size > 0 else weight_out_of_ball
+            #print(f"ups_base[{test_idx}]={ups_base[test_idx]}")
 
             # Compute base lower bound 
             j0 = max(K, bar_ball_size + 1)
             lbs_base[test_idx] = - weight_for_lb * (1/(j0 - 1) - 1/n)
+            #print(f"lbs_base[{test_idx}]={lbs_base[test_idx]}")
             
             # Compute point-specific bounds
             for rank, (d, x, y, dataidx) in enumerate(sorted_ball, 1): # rank is 1-based
                 w = kernel_value(d, sigma)
                 j0 = max(K, rank + 1)
-                ub = min(K, rank) * w * (1 if y == y_test else 0) / rank if rank > 0 else w * (1 if y == y_test else 0)
+                ub = min(K, rank) * w * (1 if y == y_test else 0) / rank 
                 if d <= dist_radius:
                     lb = ub - w * (1/(j0 - 1) - 1/n) # TODO: improve the 2nd term
                 else:
-                    rank_ = rank + n - bar_ball_size
-                    term1 = min(K, rank_) * w * (1 if y == y_test else 0) / rank_ if rank_ > 0 else w * (1 if y == y_test else 0)
+                    rank_ = rank + n - len(sorted_ball)
+                    term1 = min(K, rank_) * w * (1 if y == y_test else 0) / rank_ 
                     lb = term1 - weight_for_lb * (1/(j0 - 1) - 1/n) 
 
                 bounds_point[dataidx].append((test_idx, lb, ub))
+                #print(f"bounds_point[{dataidx}]={(test_idx, lb, ub)}")
         
         # Aggregate the base bounds
         lb_base, up_base = 0, 0
         for test_idx, z_test in enumerate(Z_test):
             lb_base += lbs_base[test_idx]
             up_base += ups_base[test_idx]
+        #print(f"lb_base={lb_base}, up_base={up_base}")
 
         # Update bounds for each data point
         lbs_point, ups_point = np.zeros(len(D)), np.zeros(len(D))
@@ -168,21 +172,23 @@ def shapley_top(D, Z_test, t, K, sigma):
             for test_idx, lb, ub in bounds_point[data_idx]:
                 lbs_point[data_idx] += lb - lbs_base[test_idx]
                 ups_point[data_idx] += ub - ups_base[test_idx]
+            #print(f"lbs_point[{data_idx}]={lbs_point[data_idx]}, ups_point[{data_idx}]={ups_point[data_idx]}")
 
         # Compare top-t lower bounds with top-1 upper bound
         top_t_idx = np.argsort(lbs_point)[-t:] 
         top_t_lb = np.min(lbs_point[top_t_idx])
         top_t_idx_set = set(top_t_idx)
         sorted_ub_idx = np.argsort(ups_point) 
-        for j in range(t+1):
+        for j in range(min(t+1, len(sorted_ub_idx))): # TODO: corner case t > len(D)
             top_1_ub_idx = sorted_ub_idx[-j-1]
             if top_1_ub_idx in top_t_idx_set:
                 continue
             else:
                 if top_t_lb >= ups_point[top_1_ub_idx]: # found top-t
                     print(f"found top-t at i={i}: top_t_lb={top_t_lb}, top_1_ub={ups_point[top_1_ub_idx]}")
-                    return top_t_idx
+                    return top_t_idx[::-1] # reverse the order and start from the largest
                 else:
+                    print(f"i={i}: top_t_lb={top_t_lb}, top_1_ub={ups_point[top_1_ub_idx]}")
                     break
 
         # Continue and double the ball radius
