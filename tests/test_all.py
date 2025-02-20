@@ -51,7 +51,18 @@ def test_build_ball():
     assert len(new_points) == 0
     assert np.isclose(dist_radius, 0.5)
 
-    #TODO: another case with more points before test point
+    # Another case with more points before test point
+    sorted_aug = sorted_aug[::-1] # reverse the order of sorted_aug
+    
+    testidx2augidx = {0: 3}
+    processed = {0: Processed()}
+    landmark = np.array([2.5])
+
+    new_points, dist_radius = build_ball(pt_test, i=3, sorted_aug=sorted_aug,
+                                      testidx2augidx=testidx2augidx,
+                                      processed=processed, landmark=landmark)
+    assert len(new_points) == 3
+    assert np.isclose(dist_radius, 0.5)
 
 
 def test_shapley_bf():
