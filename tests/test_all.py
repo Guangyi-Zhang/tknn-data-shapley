@@ -51,17 +51,19 @@ def test_build_ball():
     assert len(new_points) == 0
     assert np.isclose(dist_radius, 0.5)
 
+    #TODO: another case with more points before test point
+
 
 def test_shapley_bf():
     D = [
         (np.array([0.5]), 1),
-        (np.array([1.0]), 0), 
-        (np.array([2.0]), 1)
+        (np.array([2.0]), 1),
+        (np.array([1.0]), 0)
     ]
     z_test = (np.array([0.0]), 1)
 
     shapley_values = shapley_bf(D, z_test, K=2, sigma=1)
-    answer = [0.8374, -0.0451,  0.0902]
+    answer = [0.8374, 0.0902, -0.0451]
 
     assert np.allclose(shapley_values, answer, atol=1e-03)
 
@@ -71,6 +73,6 @@ def test_shapley_bf():
         (np.array([0.0]), 1),
     ]
     shapley_values = shapley_bf(D, Z_test, K=2, sigma=1)
-    answer = [0.8374, -0.0451,  0.0902]
+    answer = [0.8374, 0.0902, -0.0451]
 
     assert np.allclose(shapley_values, answer, atol=1e-03)
