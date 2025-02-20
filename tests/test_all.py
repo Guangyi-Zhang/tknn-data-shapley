@@ -31,7 +31,7 @@ def test_build_ball():
     assert 2 in new_ids
     
     # Verify radius calculation
-    assert np.isclose(dist_radius, 0.5)
+    assert np.isclose(dist_radius, 1)
     
     # Verify processed state updated
     assert len(processed[0].pts) == 2
@@ -42,14 +42,14 @@ def test_build_ball():
                                       processed=processed, landmark=landmark)
     assert len(new_points) == 1
     assert 3 in [p.idx for p in new_points]
-    assert np.isclose(dist_radius, 0.5)
+    assert np.isclose(dist_radius, 1.5)
 
     # Increase radius i
     new_points, dist_radius = build_ball(pt_test, i=3, sorted_aug=sorted_aug,
                                       testidx2augidx=testidx2augidx,
                                       processed=processed, landmark=landmark)
     assert len(new_points) == 0
-    assert np.isclose(dist_radius, 0.5)
+    assert np.isclose(dist_radius, float('inf'))
 
     # Another case with more points before test point
     sorted_aug = sorted_aug[::-1] # reverse the order of sorted_aug
@@ -58,11 +58,11 @@ def test_build_ball():
     processed = {0: Processed()}
     landmark = np.array([2.5])
 
-    new_points, dist_radius = build_ball(pt_test, i=3, sorted_aug=sorted_aug,
+    new_points, dist_radius = build_ball(pt_test, i=2, sorted_aug=sorted_aug,
                                       testidx2augidx=testidx2augidx,
                                       processed=processed, landmark=landmark)
     assert len(new_points) == 3
-    assert np.isclose(dist_radius, 0.5)
+    assert np.isclose(dist_radius, 1.5)
 
 
 def test_shapley_bf():

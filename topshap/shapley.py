@@ -63,7 +63,8 @@ def build_ball(pt_test, i, sorted_aug, testidx2augidx, processed, landmark):
             dist_right = abs(dist_to_landmark - dist_test_to_landmark)
             break
     
-    dist_radius = min(dist_left, dist_right)
+    dist_radius = min(dist_left if start > 0 else float('inf'), 
+                      dist_right if end < len(sorted_aug) else float('inf'))
     return new_points, dist_radius
 
 
@@ -89,7 +90,7 @@ def shapley_top(D, Z_test, t, K, sigma):
     
     # Create augmented list with test markers
     augmented = [Point(*z, idx, True) for idx, z in enumerate(Z_test)] + [Point(*z, idx, False) for idx, z in enumerate(D)]
-    
+
     # Compute distances to landmark and sort
     distances = [distance(x, landmark) for x, _, _, _ in augmented]
     sorted_inds = np.argsort(distances)
@@ -115,6 +116,9 @@ def shapley_top(D, Z_test, t, K, sigma):
             # Compute distances to current test point
             dists = [(distance(x, x_test), x, y, dataidx) for x, y, dataidx, _ in processed[test_idx].pts]
             sorted_ball = sorted(dists, key=lambda x: x[0])
+            dist_max = sorted_ball[-1][0]
+            if dist_radius == float('inf'): # no point is outside the ball
+                dist_radius = dist_max
 
             # Compute |barB_i(z_test)| for points whose local rank equals global rank
             bar_ball_size = 0
