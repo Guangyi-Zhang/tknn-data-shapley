@@ -166,12 +166,21 @@ def shapley_top(D, Z_test, t, K, sigma):
                 ups_point[data_idx] += ub - ups_base[test_idx]
 
         # Compare top-t lower bounds with top-1 upper bound
-        top_t_idx = np.argsort(lbs_point)[-t:] # TODO: legal?
+        top_t_idx = np.argsort(lbs_point)[-t:] 
         top_t_lb = np.min(lbs_point[top_t_idx])
-        top_1_ub = ups_point[np.argmax(ups_point)]
-        if top_t_lb >= top_1_ub: # found top-t
-            return top_t_idx
-    
+        top_t_idx_set = set(top_t_idx)
+        sorted_ub_idx = np.argsort(ups_point) 
+        for j in range(t+1):
+            top_1_ub_idx = sorted_ub_idx[-j-1]
+            if top_1_ub_idx in top_t_idx_set:
+                continue
+            else:
+                if top_t_lb >= ups_point[top_1_ub_idx]: # found top-t
+                    print(f"found top-t at i={i}: top_t_lb={top_t_lb}, top_1_ub={ups_point[top_1_ub_idx]}")
+                    return top_t_idx
+                else:
+                    break
+
         # Continue and double the ball radius
         if i != len(sorted_aug):
             i *= 2 
