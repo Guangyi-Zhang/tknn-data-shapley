@@ -55,7 +55,7 @@ def build_ball(pt_test, i, sorted_aug, testidx2augidx, landmark):
     return points, dist_radius
 
 
-def shapley_top(D, Z_test, t, K, sigma):
+def shapley_top(D, Z_test, t, K, sigma, i_start=1, tol=1e-3):
     """
     Compute top-t Shapley values using landmark-based ball expansion.
     
@@ -87,7 +87,7 @@ def shapley_top(D, Z_test, t, K, sigma):
     testidx2augidx = dict([(z.idx, idx) for idx, z in enumerate(sorted_aug) if z.is_test])
         
     n = len(D)
-    i = 1 # ball radius
+    i = i_start # ball radius
     while i <= len(sorted_aug):
         lb_base_sum, up_base_sum = 0, 0
         lbs_diff_point, ups_diff_point = np.zeros(len(D)), np.zeros(len(D))
@@ -177,11 +177,16 @@ def shapley_top(D, Z_test, t, K, sigma):
             if top_1_ub_idx in top_t_idx_set:
                 continue
             else:
-                if top_t_lb >= ups_point[top_1_ub_idx]: # found top-t
+                if top_t_lb >= ups_point[top_1_ub_idx] - tol: # found top-t
                     print(f"found top-t at i={i}: top_t_lb={top_t_lb}, top_1_ub={ups_point[top_1_ub_idx]}")
                     return top_t_idx[::-1] # reverse the order and start from the largest
                 else:
                     print(f"i={i}: top_t_lb={top_t_lb}, top_1_ub={ups_point[top_1_ub_idx]}")
+                    # find the largest index of a point in sorted_ub_idx whose ups_point[idx] <= top_t_lb
+                    # for idx in range(len(sorted_ub_idx)-1, -1, -1):
+                    #     if ups_point[sorted_ub_idx[idx]] <= top_t_lb:
+                    #         print(f"count idx={idx} out of {len(sorted_ub_idx)}: ub={ups_point[sorted_ub_idx[idx]]}")
+                    #         break
                     break
 
         # Continue and double the ball radius
