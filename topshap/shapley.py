@@ -23,7 +23,6 @@ def build_ball(pt_test, i, sorted_aug, testidx2augidx, landmark):
     """
     Build a ball of radius i around z_test along the sorted augmented list.
     """
-    # TODO: dist of test points also counts
     x_test, y_test = pt_test.x, pt_test.y
     pos = testidx2augidx[pt_test.idx]
     
@@ -33,28 +32,23 @@ def build_ball(pt_test, i, sorted_aug, testidx2augidx, landmark):
     points = []
     
     # Collect new data points in expanded ball
-    try_first = False
-    dist_left, dist_right = 0, 0
     for idx in range(start, end):
         x, y, dataidx, is_test = sorted_aug[idx]
         if not is_test:
             points.append(Point(x, y, dataidx, False))
 
-        # Compute a lower bound on dist_to_test for points outside the ball, left part
-        if not is_test and not try_first:
-            try_first = True
-            dist_to_landmark = distance(x, landmark)
-            dist_test_to_landmark = distance(x_test, landmark)
-            dist_left = abs(dist_to_landmark - dist_test_to_landmark)
+    # Compute a lower bound on dist_to_test for points outside the ball, left part
+    dist_left, dist_right = 0, 0
+    x, y, dataidx, is_test = sorted_aug[start]
+    dist_to_landmark = distance(x, landmark)
+    dist_test_to_landmark = distance(x_test, landmark)
+    dist_left = abs(dist_to_landmark - dist_test_to_landmark)
 
     # Compute a lower bound on dist_to_test for points outside the ball, right part
-    for idx in range(end-1, pos, -1):
-        x, y, dataidx, is_test = sorted_aug[idx]
-        if not is_test:
-            dist_to_landmark = distance(x, landmark)
-            dist_test_to_landmark = distance(x_test, landmark)
-            dist_right = abs(dist_to_landmark - dist_test_to_landmark)
-            break
+    x, y, dataidx, is_test = sorted_aug[end-1]
+    dist_to_landmark = distance(x, landmark)
+    dist_test_to_landmark = distance(x_test, landmark)
+    dist_right = abs(dist_to_landmark - dist_test_to_landmark)
     
     dist_radius = min(dist_left if start > 0 else float('inf'), 
                       dist_right if end < len(sorted_aug) else float('inf'))
