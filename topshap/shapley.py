@@ -19,13 +19,7 @@ def kernel_value(d, sigma):
 Point = namedtuple('Point', ['x', 'y', 'idx', 'is_test'])
 
 
-class Processed:
-    def __init__(self):
-        self.ids = set()
-        self.pts = []
-
-
-def build_ball(pt_test, i, sorted_aug, testidx2augidx, processed, landmark):
+def build_ball(pt_test, i, sorted_aug, testidx2augidx, landmark):
     """
     Build a ball of radius i around z_test along the sorted augmented list.
     """
@@ -36,17 +30,15 @@ def build_ball(pt_test, i, sorted_aug, testidx2augidx, processed, landmark):
     # Get ball boundaries
     start = max(0, pos - i)
     end = min(len(sorted_aug), pos + i + 1) # +1 for exclusive end
-    new_points = []
+    points = []
     
     # Collect new data points in expanded ball
     try_first = False
     dist_left, dist_right = 0, 0
     for idx in range(start, end):
         x, y, dataidx, is_test = sorted_aug[idx]
-        if not is_test and dataidx not in processed[pt_test.idx].ids:
-            processed[pt_test.idx].ids.add(dataidx)
-            processed[pt_test.idx].pts.append(Point(x, y, dataidx, False))
-            new_points.append(Point(x, y, dataidx, False))
+        if not is_test:
+            points.append(Point(x, y, dataidx, False))
 
         # Compute a lower bound on dist_to_test for points outside the ball, left part
         if not is_test and not try_first:
@@ -66,7 +58,7 @@ def build_ball(pt_test, i, sorted_aug, testidx2augidx, processed, landmark):
     
     dist_radius = min(dist_left if start > 0 else float('inf'), 
                       dist_right if end < len(sorted_aug) else float('inf'))
-    return new_points, dist_radius
+    return points, dist_radius
 
 
 def shapley_top(D, Z_test, t, K, sigma):
@@ -101,20 +93,19 @@ def shapley_top(D, Z_test, t, K, sigma):
     testidx2augidx = dict([(z.idx, idx) for idx, z in enumerate(sorted_aug) if z.is_test])
         
     n = len(D)
-    processed = [Processed() for _ in Z_test] # Track processed data per test point
     i = 1 # ball radius
     while i <= len(sorted_aug):
-        lbs_base, ups_base = np.zeros(len(Z_test)), np.zeros(len(Z_test)) # base bounds
-        bounds_point = [[] for _ in D] # each entry in [] is (test_idx, lower_bound, upper_bound)
+        lb_base_sum, up_base_sum = 0, 0
+        lbs_diff_point, ups_diff_point = np.zeros(len(D)), np.zeros(len(D))
         
         for test_idx, z_test in enumerate(Z_test):
             x_test, y_test = z_test
-            new_points, dist_radius = build_ball(Point(*z_test, test_idx, True), i, sorted_aug, 
-                                                 testidx2augidx, processed, landmark)
+            points, dist_radius = build_ball(Point(*z_test, test_idx, True), i, sorted_aug, 
+                                                 testidx2augidx, landmark)
             #print(f"i={i}, dist_radius={dist_radius}, processed[{test_idx}].ids={processed[test_idx].ids}")
 
             # Compute distances to current test point
-            dists = [(distance(x, x_test), x, y, dataidx) for x, y, dataidx, _ in processed[test_idx].pts]
+            dists = [(distance(x, x_test), x, y, dataidx) for x, y, dataidx, _ in points]
             sorted_ball = sorted(dists, key=lambda x: x[0])
             if dist_radius == float('inf') and len(sorted_ball) > 0: # no point is outside the ball
                 dist_radius = sorted_ball[-1][0] # set to max dist
@@ -140,13 +131,17 @@ def shapley_top(D, Z_test, t, K, sigma):
             #print(f"bar_ball_size={bar_ball_size}, weight_max_in_ball={weight_max_in_ball}, weight_for_lb={weight_for_lb}")
             
             # Compute base upper bound 
-            ups_base[test_idx] = min(K, bar_ball_size) * weight_out_of_ball / bar_ball_size if bar_ball_size > 0 else weight_out_of_ball
+            up_base = min(K, bar_ball_size) * weight_out_of_ball / bar_ball_size if bar_ball_size > 0 else weight_out_of_ball
             #print(f"ups_base[{test_idx}]={ups_base[test_idx]}")
 
             # Compute base lower bound 
             j0 = max(K, bar_ball_size + 1)
-            lbs_base[test_idx] = - weight_for_lb * (1/(j0 - 1) - 1/n)
+            lb_base = - weight_for_lb * (1/(j0 - 1) - 1/n)
             #print(f"lbs_base[{test_idx}]={lbs_base[test_idx]}")
+
+            # Aggregate base bounds
+            lb_base_sum += lb_base
+            up_base_sum += up_base
             
             # Compute point-specific bounds
             for rank, (d, x, y, dataidx) in enumerate(sorted_ball, 1): # rank is 1-based
@@ -165,24 +160,17 @@ def shapley_top(D, Z_test, t, K, sigma):
                     term1 = min(K, rank_) * w * (1 if y == y_test else 0) / rank_ 
                     lb = term1 - term2_lb
 
-                bounds_point[dataidx].append((test_idx, lb, ub))
+                # Aggregate differences in the point-specific bounds
+                lbs_diff_point[dataidx] += lb - lb_base
+                ups_diff_point[dataidx] += ub - up_base
                 #print(f"bounds_point[{dataidx}]={(test_idx, lb, ub)}, term2={term2}")
         
-        # Aggregate the base bounds
-        lb_base, up_base = 0, 0
-        for test_idx, z_test in enumerate(Z_test):
-            lb_base += lbs_base[test_idx]
-            up_base += ups_base[test_idx]
-        #print(f"lb_base={lb_base}, up_base={up_base}")
-
         # Update bounds for each data point
+        #print(f"lb_base={lb_base}, up_base={up_base}")
         lbs_point, ups_point = np.zeros(len(D)), np.zeros(len(D))
         for data_idx, z in enumerate(D):
-            lbs_point[data_idx] = lb_base
-            ups_point[data_idx] = up_base
-            for test_idx, lb, ub in bounds_point[data_idx]:
-                lbs_point[data_idx] += lb - lbs_base[test_idx]
-                ups_point[data_idx] += ub - ups_base[test_idx]
+            lbs_point[data_idx] = lb_base_sum + lbs_diff_point[data_idx]
+            ups_point[data_idx] = up_base_sum + ups_diff_point[data_idx]
             #print(f"lbs_point[{data_idx}]={lbs_point[data_idx]}, ups_point[{data_idx}]={ups_point[data_idx]}")
 
         # Compare top-t lower bounds with top-1 upper bound
