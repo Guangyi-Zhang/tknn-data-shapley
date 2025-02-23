@@ -94,16 +94,27 @@ def build_ball(pt_test, i, sorted_aug, testidx2augidx, landmark):
     return points, dist_radius
 
 
-def shapley_top_i(D, Z_test, testidx2center, testidx2aug, testidx2augidx, K, sigma, i):
+lb_base_sum_fixed, up_base_sum_fixed = 0, 0
+lbs_diff_point_fixed, ups_diff_point_fixed = None, None
+test_stops = None
+
+def shapley_top_i(D, Z_test, testidx2center, testidx2aug, testidx2augidx, K, sigma, i, test_tol=1e-6):
     """
     Run shapley_top for a specified landmark and ball radius i.
     Return lb_base_sum, up_base_sum, lbs_diff_point, ups_diff_point
     """
+    global lb_base_sum_fixed, up_base_sum_fixed, lbs_diff_point_fixed, ups_diff_point_fixed, test_stops
+    if lbs_diff_point_fixed is None:
+        lbs_diff_point_fixed = np.zeros(len(D))
+        ups_diff_point_fixed = np.zeros(len(D))
+        test_stops = [False] * len(Z_test)
     n = len(D)
     lb_base_sum, up_base_sum = 0, 0
     lbs_diff_point, ups_diff_point = np.zeros(len(D)), np.zeros(len(D))
     
     for test_idx, z_test in enumerate(Z_test):
+        if test_stops[test_idx]:
+            continue
         x_test, y_test = z_test
         idx_center, dist_center = testidx2center[test_idx]
         landmark = Z_test[idx_center][0]
@@ -140,6 +151,8 @@ def shapley_top_i(D, Z_test, testidx2center, testidx2aug, testidx2augidx, K, sig
         
         # Compute base upper bound 
         up_base = min(K, bar_ball_size) * weight_out_of_ball / bar_ball_size if bar_ball_size > 0 else weight_out_of_ball
+        if weight_out_of_ball < test_tol:
+            test_stops[test_idx] = True
         #print(f"ups_base[{test_idx}]={ups_base[test_idx]}")
 
         # Compute base lower bound 
@@ -148,8 +161,12 @@ def shapley_top_i(D, Z_test, testidx2center, testidx2aug, testidx2augidx, K, sig
         #print(f"lbs_base[{test_idx}]={lbs_base[test_idx]}")
 
         # Aggregate base bounds
-        lb_base_sum += lb_base
-        up_base_sum += up_base
+        if test_stops[test_idx]:
+            lb_base_sum_fixed += lb_base
+            up_base_sum_fixed += up_base
+        else:
+            lb_base_sum += lb_base
+            up_base_sum += up_base
         
         # Compute point-specific bounds
         for rank, (d, x, y, dataidx) in enumerate(sorted_ball, 1): # rank is 1-based
@@ -169,16 +186,20 @@ def shapley_top_i(D, Z_test, testidx2center, testidx2aug, testidx2augidx, K, sig
                 lb = term1 - term2_lb
 
             # Aggregate differences in the point-specific bounds
-            lbs_diff_point[dataidx] += lb - lb_base
-            ups_diff_point[dataidx] += ub - up_base
+            if test_stops[test_idx]:
+                lbs_diff_point_fixed[dataidx] += lb - lb_base
+                ups_diff_point_fixed[dataidx] += ub - up_base
+            else:
+                lbs_diff_point[dataidx] += lb - lb_base
+                ups_diff_point[dataidx] += ub - up_base
             #print(f"bounds_point[{dataidx}]={(test_idx, lb, ub)}, term2={term2}")
     
     # Update bounds for each data point
     #print(f"lb_base={lb_base}, up_base={up_base}")
     lbs_point, ups_point = np.zeros(len(D)), np.zeros(len(D))
     for data_idx, z in enumerate(D):
-        lbs_point[data_idx] = lb_base_sum + lbs_diff_point[data_idx]
-        ups_point[data_idx] = up_base_sum + ups_diff_point[data_idx]
+        lbs_point[data_idx] = lb_base_sum_fixed + lb_base_sum + lbs_diff_point[data_idx] + lbs_diff_point_fixed[data_idx]
+        ups_point[data_idx] = up_base_sum_fixed + up_base_sum + ups_diff_point[data_idx] + ups_diff_point_fixed[data_idx]
         #print(f"lbs_point[{data_idx}]={lbs_point[data_idx]}, ups_point[{data_idx}]={ups_point[data_idx]}")
 
     return lbs_point, ups_point
@@ -243,7 +264,7 @@ def shapley_top(D, Z_test, t, K, sigma, n_clst=25, i_start=1, tol=1e-3):
                     print(f"found top-t at i={i}: top_t_lb={top_t_lb}, top_1_ub={ups_point[top_1_ub_idx]}")
                     return top_t_idx[::-1] # reverse the order and start from the largest
                 else:
-                    print(f"i={i}: top_t_lb={top_t_lb}, top_1_ub={ups_point[top_1_ub_idx]}")
+                    print(f"i={i}: top_t_lb={top_t_lb}, top_1_ub={ups_point[top_1_ub_idx]}, #stops={sum(test_stops)}")
                     # find the largest index of a point in sorted_ub_idx whose ups_point[idx] <= top_t_lb
                     # for idx in range(len(sorted_ub_idx)-1, -1, -1):
                     #     if ups_point[sorted_ub_idx[idx]] <= top_t_lb:
