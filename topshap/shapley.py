@@ -55,7 +55,7 @@ def build_ball(pt_test, i, sorted_aug, testidx2augidx, landmark):
     return points, dist_radius
 
 
-def shapley_top_i(D, Z_test, testidx2landmark, testidx2aug, testidx2augidx, K, sigma, i):
+def shapley_top_i(D, Z_test, testidx2center, testidx2aug, testidx2augidx, K, sigma, i):
     """
     Run shapley_top for a specified landmark and ball radius i.
     Return lb_base_sum, up_base_sum, lbs_diff_point, ups_diff_point
@@ -66,8 +66,8 @@ def shapley_top_i(D, Z_test, testidx2landmark, testidx2aug, testidx2augidx, K, s
     
     for test_idx, z_test in enumerate(Z_test):
         x_test, y_test = z_test
-        idx_landmark = testidx2landmark[test_idx]
-        landmark = Z_test[idx_landmark][0]
+        idx_center, dist_center = testidx2center[test_idx]
+        landmark = Z_test[idx_center][0]
         sorted_aug = testidx2aug[test_idx]
         points, dist_radius = build_ball(Point(*z_test, test_idx, True), i, sorted_aug, 
                                                 testidx2augidx, landmark)
@@ -162,37 +162,64 @@ def shapley_top(D, Z_test, t, K, sigma, i_start=1, tol=1e-3):
     if not Z_test:
         return np.zeros(len(D))
     
-    # Each test point is associated with a landmark
-    testidx2landmark = {}
-    landmark2testidx = defaultdict(list)
-    for idx, z in enumerate(Z_test):
-        testidx2landmark[idx] = 0
-        landmark2testidx[0].append(idx)
+    # Cluster the test points into n_clst clusters by k-center algorithm
+    # Use the furthest first (k-center) algorithm:
+    n_clst = 25
+    centers_idx = set([0]) # Choose the first test point as the initial center.
+    # Select additional centers until reaching n_clst (or all points if fewer)
+    num_points = len(Z_test)
+    while len(centers_idx) < min(n_clst, num_points):
+        max_dist = -1
+        next_center_idx = None
+        for i in range(num_points):
+            if i in centers_idx:
+                continue
+            # Compute distance from Z_test[i] to its nearest already-chosen center.
+            d = min([distance(Z_test[i][0], Z_test[c][0]) for c in centers_idx])
+            if d > max_dist:
+                max_dist = d
+                next_center_idx = i
+        if next_center_idx is not None:
+            centers_idx.add(next_center_idx)
     
+    # Assign each test point to the nearest center, forming clusters.
+    clusters = {ci: [] for ci in centers_idx}
+    testidx2center = {}
+    for i, point in enumerate(Z_test):
+        best_center = None
+        best_d = float('inf')
+        for ci in centers_idx:
+            d = distance(point[0], Z_test[ci][0])
+            if d < best_d:
+                best_d = d
+                best_center = ci
+        clusters[best_center].append((i, best_d))
+        testidx2center[i] = (best_center, best_d)
+
     # Create augmented list with test markers
     augmented = [Point(*z, idx, True) for idx, z in enumerate(Z_test)] + [Point(*z, idx, False) for idx, z in enumerate(D)]
 
     # Compute distances to landmark and sort
     testidx2aug = {}
     testidx2augidx = dict()
-    for idx_landmark in testidx2landmark.values():
-        landmark = Z_test[idx_landmark][0]
+    for idx_center, cluster in clusters.items():
+        landmark = Z_test[idx_center][0]
         distances = [distance(x, landmark) for x, _, _, _ in augmented]
         sorted_inds = np.argsort(distances)
         sorted_aug = [augmented[i] for i in sorted_inds]
 
-        for idx in landmark2testidx[idx_landmark]:
-            testidx2aug[idx] = sorted_aug
+        for test_idx, _ in cluster:
+            testidx2aug[test_idx] = sorted_aug
 
         # Create data index mapping and test positions
         for idx, z in enumerate(sorted_aug):
-            if z.is_test and testidx2landmark[z.idx] == idx_landmark:
+            if z.is_test and testidx2center[z.idx][0] == idx_center:
                 testidx2augidx[z.idx] = idx
         
     n = len(D)
     i = i_start # ball radius
     while i <= len(sorted_aug):
-        lbs_point, ups_point = shapley_top_i(D, Z_test, testidx2landmark, testidx2aug, testidx2augidx, K, sigma, i)
+        lbs_point, ups_point = shapley_top_i(D, Z_test, testidx2center, testidx2aug, testidx2augidx, K, sigma, i)
 
         # Compare top-t lower bounds with top-1 upper bound
         top_t_idx = np.argsort(lbs_point)[-t:] 
