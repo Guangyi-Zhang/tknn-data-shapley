@@ -55,20 +55,20 @@ def build_ball(pt_test, i, sorted_aug, testidx2augidx, landmark):
     return points, dist_radius
 
 
-def shapley_top_i(D, Z_test, landmark, sorted_aug, testidx2augidx, K, sigma, i):
+def shapley_top_i(D, Z_test, testidx2landmark, testidx2aug, testidx2augidx, K, sigma, i):
     """
     Run shapley_top for a specified landmark and ball radius i.
     Return lb_base_sum, up_base_sum, lbs_diff_point, ups_diff_point
     """
-    if i > len(sorted_aug):
-        i = len(sorted_aug)
-
     n = len(D)
     lb_base_sum, up_base_sum = 0, 0
     lbs_diff_point, ups_diff_point = np.zeros(len(D)), np.zeros(len(D))
     
     for test_idx, z_test in enumerate(Z_test):
         x_test, y_test = z_test
+        idx_landmark = testidx2landmark[test_idx]
+        landmark = Z_test[idx_landmark][0]
+        sorted_aug = testidx2aug[test_idx]
         points, dist_radius = build_ball(Point(*z_test, test_idx, True), i, sorted_aug, 
                                                 testidx2augidx, landmark)
         #print(f"i={i}, dist_radius={dist_radius}, processed[{test_idx}].ids={processed[test_idx].ids}")
@@ -162,24 +162,37 @@ def shapley_top(D, Z_test, t, K, sigma, i_start=1, tol=1e-3):
     if not Z_test:
         return np.zeros(len(D))
     
-    # Select first test point as landmark
-    landmark = Z_test[0][0]
+    # Each test point is associated with a landmark
+    testidx2landmark = {}
+    landmark2testidx = defaultdict(list)
+    for idx, z in enumerate(Z_test):
+        testidx2landmark[idx] = 0
+        landmark2testidx[0].append(idx)
     
     # Create augmented list with test markers
     augmented = [Point(*z, idx, True) for idx, z in enumerate(Z_test)] + [Point(*z, idx, False) for idx, z in enumerate(D)]
 
     # Compute distances to landmark and sort
-    distances = [distance(x, landmark) for x, _, _, _ in augmented]
-    sorted_inds = np.argsort(distances)
-    sorted_aug = [augmented[i] for i in sorted_inds]
-    
-    # Create data index mapping and test positions
-    testidx2augidx = dict([(z.idx, idx) for idx, z in enumerate(sorted_aug) if z.is_test])
+    testidx2aug = {}
+    testidx2augidx = dict()
+    for idx_landmark in testidx2landmark.values():
+        landmark = Z_test[idx_landmark][0]
+        distances = [distance(x, landmark) for x, _, _, _ in augmented]
+        sorted_inds = np.argsort(distances)
+        sorted_aug = [augmented[i] for i in sorted_inds]
+
+        for idx in landmark2testidx[idx_landmark]:
+            testidx2aug[idx] = sorted_aug
+
+        # Create data index mapping and test positions
+        for idx, z in enumerate(sorted_aug):
+            if z.is_test and testidx2landmark[z.idx] == idx_landmark:
+                testidx2augidx[z.idx] = idx
         
     n = len(D)
     i = i_start # ball radius
     while i <= len(sorted_aug):
-        lbs_point, ups_point = shapley_top_i(D, Z_test, landmark, sorted_aug, testidx2augidx, K, sigma, i)
+        lbs_point, ups_point = shapley_top_i(D, Z_test, testidx2landmark, testidx2aug, testidx2augidx, K, sigma, i)
 
         # Compare top-t lower bounds with top-1 upper bound
         top_t_idx = np.argsort(lbs_point)[-t:] 
