@@ -1,5 +1,7 @@
 import numpy as np
 from collections import namedtuple, defaultdict
+import time
+import heapq
 
 
 def distance(x, y):
@@ -23,23 +25,34 @@ def kcenter(Z_test, n_clst):
     """
     Cluster the test points into n_clst clusters by k-center algorithm.
     """
-    # Use the furthest first (k-center) algorithm:
-    centers_idx = set([0]) # Choose the first test point as the initial center.
-    # Select additional centers until reaching n_clst (or all points if fewer)
+    # Use the furthest first (k-center) algorithm
+    # Speed up by tracking the minimum distance over already chosen centers for each point, and push them into a max heap
+    c_init = 0
+    centers_idx = [c_init] # Choose the first test point as the initial center.
+
+    # Initialize the heap
+    H = []
     num_points = len(Z_test)
+    for i in range(num_points):
+        d = distance(Z_test[i][0], Z_test[c_init][0])
+        H.append((-d, i, len(centers_idx)))
+    heapq.heapify(H)
+
+    # Select additional centers until reaching n_clst (or all points if fewer)
     while len(centers_idx) < min(n_clst, num_points):
-        max_dist = -1
-        next_center_idx = None
-        for i in range(num_points):
-            if i in centers_idx:
-                continue
-            # Compute distance from Z_test[i] to its nearest already-chosen center.
-            d = min([distance(Z_test[i][0], Z_test[c][0]) for c in centers_idx])
-            if d > max_dist:
-                max_dist = d
-                next_center_idx = i
-        if next_center_idx is not None:
-            centers_idx.add(next_center_idx)
+        while True:
+            d, i, nc = heapq.heappop(H)
+            n_diff = len(centers_idx) - nc
+            if n_diff > 0:
+                d = min(-d, min([distance(Z_test[i][0], Z_test[c][0]) for c in centers_idx[-n_diff:]]))
+            else:
+                d = -d
+            heapq.heappush(H, (-d, i, len(centers_idx)))
+            if np.isclose(d, -H[0][0]):
+                break
+                
+        d, i, _ = heapq.heappop(H)
+        centers_idx.append(i)
     
     # Assign each test point to the nearest center, forming clusters.
     clusters = {ci: [] for ci in centers_idx}
@@ -223,12 +236,16 @@ def shapley_top(D, Z_test, t, K, sigma, n_clst=25, i_start=1, tol=1e-3):
         return np.zeros(len(D))
     
     # Cluster the test points into n_clst clusters by k-center algorithm
+    start = time.time()
     clusters, testidx2center = kcenter(Z_test, n_clst)
+    end = time.time()
+    print(f"kcenter took {end - start:.2f} seconds")
 
     # Create augmented list with test markers
     augmented = [Point(*z, idx, True) for idx, z in enumerate(Z_test)] + [Point(*z, idx, False) for idx, z in enumerate(D)]
 
     # Compute distances to landmark and sort
+    start = time.time()
     testidx2aug = {}
     testidx2augidx = dict()
     for idx_center, cluster in clusters.items():
@@ -244,6 +261,8 @@ def shapley_top(D, Z_test, t, K, sigma, n_clst=25, i_start=1, tol=1e-3):
         for idx, z in enumerate(sorted_aug):
             if z.is_test and testidx2center[z.idx][0] == idx_center:
                 testidx2augidx[z.idx] = idx
+    end = time.time()
+    print(f"landmark sorting took {end - start:.2f} seconds")
         
     n = len(D)
     i = i_start # ball radius
