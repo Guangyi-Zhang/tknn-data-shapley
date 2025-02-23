@@ -145,7 +145,7 @@ def shapley_top_i(D, Z_test, testidx2center, testidx2aug, testidx2augidx, K, sig
     return lbs_point, ups_point
 
 
-def shapley_top(D, Z_test, t, K, sigma, i_start=1, tol=1e-3):
+def shapley_top(D, Z_test, t, K, sigma, n_clst=25, i_start=1, tol=1e-3):
     """
     Compute top-t Shapley values using landmark-based ball expansion.
     
@@ -164,7 +164,6 @@ def shapley_top(D, Z_test, t, K, sigma, i_start=1, tol=1e-3):
     
     # Cluster the test points into n_clst clusters by k-center algorithm
     # Use the furthest first (k-center) algorithm:
-    n_clst = 25
     centers_idx = set([0]) # Choose the first test point as the initial center.
     # Select additional centers until reaching n_clst (or all points if fewer)
     num_points = len(Z_test)
