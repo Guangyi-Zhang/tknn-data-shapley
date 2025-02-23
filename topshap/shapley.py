@@ -55,6 +55,96 @@ def build_ball(pt_test, i, sorted_aug, testidx2augidx, landmark):
     return points, dist_radius
 
 
+def shapley_top_i(D, Z_test, landmark, sorted_aug, testidx2augidx, K, sigma, i):
+    """
+    Run shapley_top for a specified landmark and ball radius i.
+    Return lb_base_sum, up_base_sum, lbs_diff_point, ups_diff_point
+    """
+    if i > len(sorted_aug):
+        i = len(sorted_aug)
+
+    n = len(D)
+    lb_base_sum, up_base_sum = 0, 0
+    lbs_diff_point, ups_diff_point = np.zeros(len(D)), np.zeros(len(D))
+    
+    for test_idx, z_test in enumerate(Z_test):
+        x_test, y_test = z_test
+        points, dist_radius = build_ball(Point(*z_test, test_idx, True), i, sorted_aug, 
+                                                testidx2augidx, landmark)
+        #print(f"i={i}, dist_radius={dist_radius}, processed[{test_idx}].ids={processed[test_idx].ids}")
+
+        # Compute distances to current test point
+        dists = [(distance(x, x_test), x, y, dataidx) for x, y, dataidx, _ in points]
+        sorted_ball = sorted(dists, key=lambda x: x[0])
+        if dist_radius == float('inf') and len(sorted_ball) > 0: # no point is outside the ball
+            dist_radius = sorted_ball[-1][0] # set to max dist
+
+        # Compute |barB_i(z_test)| for points whose local rank equals global rank
+        bar_ball_size = 0
+        weight_max_in_ball = 0
+        term2_fixed = defaultdict(int) # keep the accumulated weighted terms
+        rank_fixed_max = 0
+        for rank, (d, x, y, dataidx) in enumerate(sorted_ball, 1): # rank is 1-based
+            if d <= dist_radius:
+                bar_ball_size += 1
+                if rank > 1:
+                    w = kernel_value(d, sigma)
+                    term2_fixed[rank] = w * K / rank / (rank-1) + term2_fixed[rank-1]
+                    rank_fixed_max = max(rank_fixed_max, rank)
+            else:
+                weight_max_in_ball = max(weight_max_in_ball, kernel_value(d, sigma))
+        
+        # Compute lower bound on weight for points not in ball
+        weight_out_of_ball = kernel_value(dist_radius, sigma)
+        weight_for_lb = max(weight_max_in_ball, weight_out_of_ball)
+        #print(f"bar_ball_size={bar_ball_size}, weight_max_in_ball={weight_max_in_ball}, weight_for_lb={weight_for_lb}")
+        
+        # Compute base upper bound 
+        up_base = min(K, bar_ball_size) * weight_out_of_ball / bar_ball_size if bar_ball_size > 0 else weight_out_of_ball
+        #print(f"ups_base[{test_idx}]={ups_base[test_idx]}")
+
+        # Compute base lower bound 
+        j0 = max(K, bar_ball_size + 1)
+        lb_base = - weight_for_lb * (1/(j0 - 1) - 1/n)
+        #print(f"lbs_base[{test_idx}]={lbs_base[test_idx]}")
+
+        # Aggregate base bounds
+        lb_base_sum += lb_base
+        up_base_sum += up_base
+        
+        # Compute point-specific bounds
+        for rank, (d, x, y, dataidx) in enumerate(sorted_ball, 1): # rank is 1-based
+            w = kernel_value(d, sigma)
+            j0 = max(K, rank + 1)
+
+            term1 = min(K, rank) * w * (1 if y == y_test else 0) / rank
+            term2 = term2_fixed[rank_fixed_max] - term2_fixed[j0-1] if rank_fixed_max >= j0 else 0
+            ub = term1 - term2
+
+            term2_lb = term2 + weight_for_lb * (1/(max(j0, rank_fixed_max+1) - 1) - 1/n)
+            if d <= dist_radius:
+                lb = term1 - term2_lb
+            else:
+                rank_ = rank + n - len(sorted_ball)
+                term1 = min(K, rank_) * w * (1 if y == y_test else 0) / rank_ 
+                lb = term1 - term2_lb
+
+            # Aggregate differences in the point-specific bounds
+            lbs_diff_point[dataidx] += lb - lb_base
+            ups_diff_point[dataidx] += ub - up_base
+            #print(f"bounds_point[{dataidx}]={(test_idx, lb, ub)}, term2={term2}")
+    
+    # Update bounds for each data point
+    #print(f"lb_base={lb_base}, up_base={up_base}")
+    lbs_point, ups_point = np.zeros(len(D)), np.zeros(len(D))
+    for data_idx, z in enumerate(D):
+        lbs_point[data_idx] = lb_base_sum + lbs_diff_point[data_idx]
+        ups_point[data_idx] = up_base_sum + ups_diff_point[data_idx]
+        #print(f"lbs_point[{data_idx}]={lbs_point[data_idx]}, ups_point[{data_idx}]={ups_point[data_idx]}")
+
+    return lbs_point, ups_point
+
+
 def shapley_top(D, Z_test, t, K, sigma, i_start=1, tol=1e-3):
     """
     Compute top-t Shapley values using landmark-based ball expansion.
@@ -89,83 +179,7 @@ def shapley_top(D, Z_test, t, K, sigma, i_start=1, tol=1e-3):
     n = len(D)
     i = i_start # ball radius
     while i <= len(sorted_aug):
-        lb_base_sum, up_base_sum = 0, 0
-        lbs_diff_point, ups_diff_point = np.zeros(len(D)), np.zeros(len(D))
-        
-        for test_idx, z_test in enumerate(Z_test):
-            x_test, y_test = z_test
-            points, dist_radius = build_ball(Point(*z_test, test_idx, True), i, sorted_aug, 
-                                                 testidx2augidx, landmark)
-            #print(f"i={i}, dist_radius={dist_radius}, processed[{test_idx}].ids={processed[test_idx].ids}")
-
-            # Compute distances to current test point
-            dists = [(distance(x, x_test), x, y, dataidx) for x, y, dataidx, _ in points]
-            sorted_ball = sorted(dists, key=lambda x: x[0])
-            if dist_radius == float('inf') and len(sorted_ball) > 0: # no point is outside the ball
-                dist_radius = sorted_ball[-1][0] # set to max dist
-
-            # Compute |barB_i(z_test)| for points whose local rank equals global rank
-            bar_ball_size = 0
-            weight_max_in_ball = 0
-            term2_fixed = defaultdict(int) # keep the accumulated weighted terms
-            rank_fixed_max = 0
-            for rank, (d, x, y, dataidx) in enumerate(sorted_ball, 1): # rank is 1-based
-                if d <= dist_radius:
-                    bar_ball_size += 1
-                    if rank > 1:
-                        w = kernel_value(d, sigma)
-                        term2_fixed[rank] = w * K / rank / (rank-1) + term2_fixed[rank-1]
-                        rank_fixed_max = max(rank_fixed_max, rank)
-                else:
-                    weight_max_in_ball = max(weight_max_in_ball, kernel_value(d, sigma))
-            
-            # Compute lower bound on weight for points not in ball
-            weight_out_of_ball = kernel_value(dist_radius, sigma)
-            weight_for_lb = max(weight_max_in_ball, weight_out_of_ball)
-            #print(f"bar_ball_size={bar_ball_size}, weight_max_in_ball={weight_max_in_ball}, weight_for_lb={weight_for_lb}")
-            
-            # Compute base upper bound 
-            up_base = min(K, bar_ball_size) * weight_out_of_ball / bar_ball_size if bar_ball_size > 0 else weight_out_of_ball
-            #print(f"ups_base[{test_idx}]={ups_base[test_idx]}")
-
-            # Compute base lower bound 
-            j0 = max(K, bar_ball_size + 1)
-            lb_base = - weight_for_lb * (1/(j0 - 1) - 1/n)
-            #print(f"lbs_base[{test_idx}]={lbs_base[test_idx]}")
-
-            # Aggregate base bounds
-            lb_base_sum += lb_base
-            up_base_sum += up_base
-            
-            # Compute point-specific bounds
-            for rank, (d, x, y, dataidx) in enumerate(sorted_ball, 1): # rank is 1-based
-                w = kernel_value(d, sigma)
-                j0 = max(K, rank + 1)
-
-                term1 = min(K, rank) * w * (1 if y == y_test else 0) / rank
-                term2 = term2_fixed[rank_fixed_max] - term2_fixed[j0-1] if rank_fixed_max >= j0 else 0
-                ub = term1 - term2
-
-                term2_lb = term2 + weight_for_lb * (1/(max(j0, rank_fixed_max+1) - 1) - 1/n)
-                if d <= dist_radius:
-                    lb = term1 - term2_lb
-                else:
-                    rank_ = rank + n - len(sorted_ball)
-                    term1 = min(K, rank_) * w * (1 if y == y_test else 0) / rank_ 
-                    lb = term1 - term2_lb
-
-                # Aggregate differences in the point-specific bounds
-                lbs_diff_point[dataidx] += lb - lb_base
-                ups_diff_point[dataidx] += ub - up_base
-                #print(f"bounds_point[{dataidx}]={(test_idx, lb, ub)}, term2={term2}")
-        
-        # Update bounds for each data point
-        #print(f"lb_base={lb_base}, up_base={up_base}")
-        lbs_point, ups_point = np.zeros(len(D)), np.zeros(len(D))
-        for data_idx, z in enumerate(D):
-            lbs_point[data_idx] = lb_base_sum + lbs_diff_point[data_idx]
-            ups_point[data_idx] = up_base_sum + ups_diff_point[data_idx]
-            #print(f"lbs_point[{data_idx}]={lbs_point[data_idx]}, ups_point[{data_idx}]={ups_point[data_idx]}")
+        lbs_point, ups_point = shapley_top_i(D, Z_test, landmark, sorted_aug, testidx2augidx, K, sigma, i)
 
         # Compare top-t lower bounds with top-1 upper bound
         top_t_idx = np.argsort(lbs_point)[-t:] 
@@ -194,7 +208,7 @@ def shapley_top(D, Z_test, t, K, sigma, i_start=1, tol=1e-3):
             i *= 2 
             i = min(i, len(sorted_aug))
         else:
-            break
+            break    
 
 
 def shapley_bf(D, Z_test, K, sigma):
