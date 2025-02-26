@@ -8,7 +8,7 @@ from topshap.naive import shapley_bf
 
 
 def test_kcenter():
-    # Test case 1: Basic case with 5 points on a line
+    # Basic case with 5 points on a line
     Z_test = [
         (np.array([-2.0]), 1),
         (np.array([-1.0]), 1),
@@ -87,7 +87,7 @@ def test_shapley_top():
     assert top_idx == None # fail to find [0, 1, 2]
 
 
-def test_shapley_bf():
+def test_shapley():
     D = [
         (np.array([0.5]), 1),
         (np.array([2.0]), 1),
@@ -109,3 +109,11 @@ def test_shapley_bf():
     answer = [0.8374, 0.0902, -0.0451]
 
     assert np.allclose(shapley_values, answer, atol=1e-03)
+
+    # Test shapley_top
+    top_idx = shapley_top(D, Z_test, t=1, K=2, n_clst=1, sigma=1)
+    assert top_idx == [0]
+
+    top_idx = shapley_top(D, Z_test, t=2, K=2, n_clst=1, sigma=1)
+    assert np.all(top_idx == [0, 1])
+    

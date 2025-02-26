@@ -74,6 +74,12 @@ class BallExpander:
     testidx2augidx = dict()
 
     def __init__(self, D, Z_test, tol=1e-6):
+        """
+        Args:
+            D: List of training data tuples (x, y)
+            Z_test: List of test points (x_test, y_test)
+            tol: Tolerance for stopping the expansion of a ball (test point)
+        """
         self.lbs_diff_point_fixed, self.ups_diff_point_fixed = np.zeros(len(D)), np.zeros(len(D))
         self.test_stops = [False] * len(Z_test)
 
