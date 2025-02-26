@@ -1,6 +1,5 @@
 import pytest
 import numpy as np
-from collections import defaultdict
 
 from topshap.helper import distance, kernel_value
 from topshap.topt import BallExpander, Point, shapley_top, kcenter

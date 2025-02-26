@@ -244,7 +244,7 @@ class BallExpander:
         return lbs_point, ups_point
 
 
-def shapley_top(D, Z_test, t, K, sigma, n_clst=25, i_start=1, tol=1e-3):
+def shapley_top(D, Z_test, t, K, sigma, n_clst=25, i_start=64, tol=1e-3):
     """
     Compute top-t Shapley values using landmark-based ball expansion.
     
