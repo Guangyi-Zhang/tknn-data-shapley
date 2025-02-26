@@ -3,9 +3,22 @@ import numpy as np
 from collections import defaultdict
 
 from topshap.helper import distance, kernel_value
-from topshap.topt import BallExpander, Point, shapley_top
+from topshap.topt import BallExpander, Point, shapley_top, kcenter
 from topshap.naive import shapley_bf
 
+
+def test_kcenter():
+    # Test case 1: Basic case with 5 points on a line
+    Z_test = [
+        (np.array([-2.0]), 1),
+        (np.array([-1.0]), 1),
+        (np.array([0.0]), 1),
+        (np.array([1.0]), 1),
+        (np.array([2.0]), 1),
+    ]
+    clusters, testidx2center = kcenter(Z_test, n_clst=3)
+    assert list(clusters.keys()) == [0, 4, 2]
+    
 
 def test_build_ball():
     pt_test = Point(x=np.array([0.5]), y=1, idx=0, is_test=True)
