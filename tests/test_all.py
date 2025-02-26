@@ -1,7 +1,9 @@
 import pytest
 import numpy as np
 
-from topshap.shapley import shapley_bf, build_ball, Point, shapley_top
+from topshap.helper import distance, kernel_value
+from topshap.topt import build_ball, Point, shapley_top
+from topshap.naive import shapley_bf
 
 
 def test_build_ball():
