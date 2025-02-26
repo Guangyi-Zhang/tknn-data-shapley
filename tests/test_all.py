@@ -1,8 +1,9 @@
 import pytest
 import numpy as np
+from collections import defaultdict
 
 from topshap.helper import distance, kernel_value
-from topshap.topt import build_ball, Point, shapley_top
+from topshap.topt import BallExpander, Point, shapley_top
 from topshap.naive import shapley_bf
 
 
@@ -17,13 +18,12 @@ def test_build_ball():
         Point(x=np.array([2.0]), y=1, idx=3, is_test=False),
         Point(x=np.array([2.5]), y=1, idx=4, is_test=True)
     ]
-    
-    testidx2augidx = {0: 1}
     landmark = np.array([0.0])
     
-    points, dist_radius = build_ball(pt_test, i=1, sorted_aug=sorted_aug,
-                                      testidx2augidx=testidx2augidx,
-                                      landmark=landmark)
+    expander = BallExpander([], [])
+    expander.testidx2aug = {0: sorted_aug}
+    expander.testidx2augidx = {0: 1}
+    points, dist_radius = expander.build_ball(pt_test, i=1, landmark=landmark)
     
     # Verify new points added
     assert len(points) == 2
@@ -35,29 +35,23 @@ def test_build_ball():
     assert np.isclose(dist_radius, 1)
     
     # Increase radius i
-    points, dist_radius = build_ball(pt_test, i=2, sorted_aug=sorted_aug,
-                                      testidx2augidx=testidx2augidx,
-                                      landmark=landmark)
+    points, dist_radius = expander.build_ball(pt_test, i=2, landmark=landmark)
     assert len(points) == 3
     assert 3 in [p.idx for p in points]
     assert np.isclose(dist_radius, 1.5)
 
     # Increase radius i
-    points, dist_radius = build_ball(pt_test, i=3, sorted_aug=sorted_aug,
-                                      testidx2augidx=testidx2augidx,
-                                      landmark=landmark)
+    points, dist_radius = expander.build_ball(pt_test, i=3, landmark=landmark)
     assert len(points) == 3
     assert np.isclose(dist_radius, float('inf'))
 
     # Another case with more points before test point
     sorted_aug = sorted_aug[::-1] # reverse the order of sorted_aug
-    
-    testidx2augidx = {0: 3}
     landmark = np.array([2.5])
+    expander.testidx2aug = {0: sorted_aug}
+    expander.testidx2augidx = {0: 3}
 
-    new_points, dist_radius = build_ball(pt_test, i=2, sorted_aug=sorted_aug,
-                                      testidx2augidx=testidx2augidx,
-                                      landmark=landmark)
+    new_points, dist_radius = expander.build_ball(pt_test, i=2, landmark=landmark)
     assert len(new_points) == 3
     assert np.isclose(dist_radius, 1.5)
 

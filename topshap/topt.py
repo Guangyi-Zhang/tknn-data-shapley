@@ -59,42 +59,6 @@ def kcenter(Z_test, n_clst):
     return clusters, testidx2center
 
 
-def build_ball(pt_test, i, sorted_aug, testidx2augidx, landmark):
-    """
-    Build a ball of radius i around z_test along the sorted augmented list.
-    """
-    x_test, y_test = pt_test.x, pt_test.y
-    pos = testidx2augidx[pt_test.idx]
-    
-    # Get ball boundaries
-    start = max(0, pos - i)
-    end = min(len(sorted_aug), pos + i + 1) # +1 for exclusive end
-    points = []
-    
-    # Collect new data points in expanded ball
-    for idx in range(start, end):
-        x, y, dataidx, is_test = sorted_aug[idx]
-        if not is_test:
-            points.append(Point(x, y, dataidx, False))
-
-    # Compute a lower bound on dist_to_test for points outside the ball, left part
-    dist_left, dist_right = 0, 0
-    x, y, dataidx, is_test = sorted_aug[start]
-    dist_to_landmark = distance(x, landmark)
-    dist_test_to_landmark = distance(x_test, landmark)
-    dist_left = abs(dist_to_landmark - dist_test_to_landmark)
-
-    # Compute a lower bound on dist_to_test for points outside the ball, right part
-    x, y, dataidx, is_test = sorted_aug[end-1]
-    dist_to_landmark = distance(x, landmark)
-    dist_test_to_landmark = distance(x_test, landmark)
-    dist_right = abs(dist_to_landmark - dist_test_to_landmark)
-    
-    dist_radius = min(dist_left if start > 0 else float('inf'), 
-                      dist_right if end < len(sorted_aug) else float('inf'))
-    return points, dist_radius
-
-
 class BallExpander:
     """
     Compute lower and upper bounds for each data point by expanding the ball centered at each test point.
@@ -139,6 +103,45 @@ class BallExpander:
                 if z.is_test and testidx2center[z.idx][0] == idx_center:
                     self.testidx2augidx[z.idx] = idx
 
+            # TODO: stop landmark? not sure if it is helpful
+            # self.test_stops[idx_center] = True
+
+    def build_ball(self, pt_test, i, landmark):
+        """
+        Build a ball of radius i around z_test along the sorted augmented list.
+        """
+        x_test, y_test = pt_test.x, pt_test.y
+        sorted_aug = self.testidx2aug[pt_test.idx]
+        pos = self.testidx2augidx[pt_test.idx]
+        
+        # Get ball boundaries
+        start = max(0, pos - i)
+        end = min(len(sorted_aug), pos + i + 1) # +1 for exclusive end
+        points = []
+        
+        # Collect new data points in expanded ball
+        for idx in range(start, end):
+            x, y, dataidx, is_test = sorted_aug[idx]
+            if not is_test:
+                points.append(Point(x, y, dataidx, False))
+
+        # Compute a lower bound on dist_to_test for points outside the ball, left part
+        dist_left, dist_right = 0, 0
+        x, y, dataidx, is_test = sorted_aug[start]
+        dist_to_landmark = distance(x, landmark)
+        dist_test_to_landmark = distance(x_test, landmark)
+        dist_left = abs(dist_to_landmark - dist_test_to_landmark)
+
+        # Compute a lower bound on dist_to_test for points outside the ball, right part
+        x, y, dataidx, is_test = sorted_aug[end-1]
+        dist_to_landmark = distance(x, landmark)
+        dist_test_to_landmark = distance(x_test, landmark)
+        dist_right = abs(dist_to_landmark - dist_test_to_landmark)
+        
+        dist_radius = min(dist_left if start > 0 else float('inf'), 
+                        dist_right if end < len(sorted_aug) else float('inf'))
+        return points, dist_radius
+
     def expand(self, i, K, sigma):
         n = len(self.D)
         lb_base_sum, up_base_sum = 0, 0
@@ -150,9 +153,7 @@ class BallExpander:
             x_test, y_test = z_test
             idx_center, dist_center = self.testidx2center[test_idx]
             landmark = self.Z_test[idx_center][0]
-            sorted_aug = self.testidx2aug[test_idx]
-            points, dist_radius = build_ball(Point(*z_test, test_idx, True), i, sorted_aug, 
-                                                    self.testidx2augidx, landmark)
+            points, dist_radius = self.build_ball(Point(*z_test, test_idx, True), i, landmark)
             #print(f"i={i}, dist_radius={dist_radius}, processed[{test_idx}].ids={processed[test_idx].ids}")
 
             # Compute distances to current test point
