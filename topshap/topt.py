@@ -90,7 +90,7 @@ class BallExpander:
         # Create augmented list with both training and test points
         self.augmented = [Point(*z, idx, True) for idx, z in enumerate(Z_test)] + [Point(*z, idx, False) for idx, z in enumerate(D)]
 
-    def build_landmarks(self, clusters, testidx2center):
+    def build_landmarks(self, clusters, testidx2center, K, sigma):
         """
         Compute distances to each landmark and sort the augmented list.
         """
@@ -109,8 +109,28 @@ class BallExpander:
                 if z.is_test and testidx2center[z.idx][0] == idx_center:
                     self.testidx2augidx[z.idx] = idx
 
-            # TODO: stop landmark? not sure if it is helpful
-            # self.test_stops[idx_center] = True
+            # Compute Shapley values for landmarks by recursive formula
+            self.test_stops[idx_center] = True # skip the landmark in future ball expansion
+            sorted_w = [kernel_value(distances[i], sigma) for i in sorted_inds]
+            cnt = 0
+            s_prev, w_prev = None, None
+            y_test = self.Z_test[idx_center][1]
+            for z, w in zip(sorted_aug[::-1], sorted_w[::-1]):
+                if z.is_test:
+                    continue
+
+                i = len(self.D) - cnt
+                w = w * (1 if z.y == y_test else 0)
+                if cnt == 0:
+                    s = w * K / i
+                else:
+                    s = s_prev + min(K, i) / i * (w - w_prev)
+
+                self.lbs_diff_point_fixed[z.idx] += s
+                self.ups_diff_point_fixed[z.idx] += s
+
+                cnt += 1
+                s_prev, w_prev = s, w
 
     def build_ball(self, pt_test, i, landmark):
         """
@@ -156,6 +176,7 @@ class BallExpander:
         for test_idx, z_test in enumerate(self.Z_test):
             if self.test_stops[test_idx]:
                 continue
+
             x_test, y_test = z_test
             idx_center, dist_center = self.testidx2center[test_idx]
             landmark = self.Z_test[idx_center][0]
@@ -190,7 +211,7 @@ class BallExpander:
             
             # Compute base upper bound 
             up_base = min(K, bar_ball_size) * weight_out_of_ball / bar_ball_size if bar_ball_size > 0 else weight_out_of_ball
-            if weight_out_of_ball < self.tol:
+            if weight_out_of_ball < self.tol: # skip the test point in the future for negligible future weight
                 self.test_stops[test_idx] = True
             #print(f"ups_base[{test_idx}]={ups_base[test_idx]}")
 
@@ -273,16 +294,16 @@ def shapley_top(D, Z_test, t, K, sigma, n_clst=25, i_start=64, tol=1e-3):
     # Compute distances to landmark (center) and sort
     start = time.time()
     expander = BallExpander(D, Z_test)
-    expander.build_landmarks(clusters, testidx2center)
+    expander.build_landmarks(clusters, testidx2center, K, sigma)
     end = time.time()
     print(f"landmark sorting took {end - start:.2f} seconds")
         
     n = len(D)
-    i = i_start # ball radius
+    i = min(i_start, len(expander.augmented) // 2) # ball radius
     while i <= len(expander.augmented):
         # Compute lower and upper bounds for each data point by expanding the ball centered at each test point
         lbs_point, ups_point = expander.expand(i, K, sigma)
-
+        
         # Compare top-t lower bounds with top-1 upper bound
         top_t_idx = np.argsort(lbs_point)[-t:] 
         top_t_lb = np.min(lbs_point[top_t_idx])
