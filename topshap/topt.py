@@ -265,7 +265,7 @@ class BallExpander:
         return lbs_point, ups_point
 
 
-def shapley_top(D, Z_test, t, K, sigma, n_clst=25, i_start=64, tol=1e-3):
+def shapley_top(D, Z_test, t, K, sigma, n_clst=25, i_start=64, tol=1e-5, tol_ball=1e-6):
     """
     Compute top-t Shapley values using landmark-based ball expansion.
     
@@ -293,7 +293,7 @@ def shapley_top(D, Z_test, t, K, sigma, n_clst=25, i_start=64, tol=1e-3):
 
     # Compute distances to landmark (center) and sort
     start = time.time()
-    expander = BallExpander(D, Z_test)
+    expander = BallExpander(D, Z_test, tol_ball)
     expander.build_landmarks(clusters, testidx2center, K, sigma)
     end = time.time()
     print(f"landmark sorting took {end - start:.2f} seconds")
