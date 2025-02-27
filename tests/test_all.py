@@ -3,29 +3,7 @@ import numpy as np
 
 from topshap.helper import distance, kernel_value
 from topshap.topt import BallExpander, Point, shapley_top, kcenter
-from topshap.naive import shapley_bf, LSH
-
-
-def test_lsh():
-    n_tables = 2
-    n_bits = 12
-
-    # Generate 10 one-hot vectors
-    np.random.seed(42)
-    D = np.eye(10)
-
-    # Build hash tables
-    lsh = LSH(n_tables, n_bits)
-    lsh.build_hash_tables(D)
-
-    # Query hash tables
-    x = D[0]
-    candidates = lsh.query(x, 1)
-    dists = [distance(D[c], x) for c in candidates]
-    assert np.isclose(min(dists), 0)
-
-    candidates = lsh.query(x, 10)
-    assert len(candidates) == 10
+from topshap.naive import shapley_bf
 
 
 def test_kcenter():
