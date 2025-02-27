@@ -1,5 +1,6 @@
 import pytest
 import numpy as np
+from functools import partial
 
 from topshap.helper import distance, kernel_value
 from topshap.topt import BallExpander, Point, shapley_top, kcenter
@@ -32,7 +33,7 @@ def test_build_ball():
     ]
     landmark = np.array([0.0])
     
-    expander = BallExpander([], [])
+    expander = BallExpander([], [], kernel_fn=partial(kernel_value, sigma=1))
     expander.testidx2aug = {0: sorted_aug}
     expander.testidx2augidx = {0: 1}
     points, dist_radius = expander.build_ball(pt_test, i=1, landmark=landmark)
@@ -76,13 +77,13 @@ def test_shapley_top():
     ]
     Z_test = [(np.array([0.0]), 1)]
 
-    top_idx = shapley_top(D, Z_test, t=1, K=2, n_clst=1, sigma=1)
+    top_idx = shapley_top(D, Z_test, kernel_fn=partial(kernel_value, sigma=1), t=1, K=2, n_clst=1)
     assert top_idx == [0]
 
-    top_idx = shapley_top(D, Z_test, t=2, K=2, n_clst=1, sigma=1)
+    top_idx = shapley_top(D, Z_test, kernel_fn=partial(kernel_value, sigma=1), t=2, K=2, n_clst=1)
     assert np.all(top_idx == [0, 1])
 
-    top_idx = shapley_top(D, Z_test, t=3, K=2, n_clst=1, sigma=1)
+    top_idx = shapley_top(D, Z_test, kernel_fn=partial(kernel_value, sigma=1), t=3, K=2, n_clst=1)
     assert top_idx == None # fail to find [0, 1, 2]
 
 
@@ -110,7 +111,7 @@ def test_shapley_top_2dplanes():
     t = 20
     n_clst = len(Z_test) // 10
 
-    topt = shapley_top(D, Z_test, t=t, K=K, sigma=sigma, n_clst=n_clst)
+    topt = shapley_top(D, Z_test, kernel_fn=partial(kernel_value, sigma=sigma), t=t, K=K, n_clst=n_clst)
     # too many after top-9 are equal, so we only check the first 9
     assert topt[0] == 5706
     assert set(topt[1:9]) == set([10495, 17226, 29540, 22601, 35218, 10265, 21305, 8716])
@@ -124,7 +125,7 @@ def test_shapley():
     ]
     z_test = (np.array([0.0]), 1)
 
-    shapley_values = shapley_bf(D, z_test, K=2, sigma=1)
+    shapley_values = shapley_bf(D, z_test, K=2, kernel_fn=partial(kernel_value, sigma=1))
     answer = [0.8374, 0.0902, -0.0451]
 
     assert np.allclose(shapley_values, answer, atol=1e-03)
@@ -134,7 +135,7 @@ def test_shapley():
         (np.array([0.0]), 1),
         (np.array([0.0]), 1),
     ]
-    shapley_values = shapley_bf(D, Z_test, K=2, sigma=1)
+    shapley_values = shapley_bf(D, Z_test, K=2, kernel_fn=partial(kernel_value, sigma=1))
     answer = [0.8374, 0.0902, -0.0451]
 
     assert np.allclose(shapley_values, answer, atol=1e-03)

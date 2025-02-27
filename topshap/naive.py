@@ -3,23 +3,23 @@ import numpy as np
 from topshap.helper import distance, kernel_value
 
 
-def shapley_bf(D, Z_test, K, sigma):
+def shapley_bf(D, Z_test, K, kernel_fn):
     """
     Compute Shapley values for weighted KNN using brute force.
     """
     if not isinstance(Z_test, list):
-        return shapley_bf_single(D, Z_test, K, sigma)
+        return shapley_bf_single(D, Z_test, K, kernel_fn)
     
     n_test = len(Z_test)
     shapley_values = np.zeros(len(D))
     for i in range(n_test):
-        s = shapley_bf_single(D, Z_test[i], K, sigma)
+        s = shapley_bf_single(D, Z_test[i], K, kernel_fn)
         shapley_values += s
 
     return shapley_values / n_test
     
 
-def shapley_bf_single(D, z_test, K, sigma):
+def shapley_bf_single(D, z_test, K, kernel_fn):
     """
     Compute Shapley values for weighted KNN using recursive formula.
     
@@ -27,7 +27,7 @@ def shapley_bf_single(D, z_test, K, sigma):
         D: List of tuples (x, y) where x is feature vector, y is label
         z_test: Test point tuple (x_test, y_test)
         K: Number of neighbors for KNN
-        sigma: Bandwidth for Gaussian kernel
+        kernel_fn: Kernel function
         
     Returns:
         Array of Shapley values for each data point
@@ -42,7 +42,7 @@ def shapley_bf_single(D, z_test, K, sigma):
     sorted_dxy_idx = sorted(range(len(dxy)), key=lambda i: dxy[i][0]) # argsort
     
     # Extract weights and label matches
-    w = [kernel_value(d, sigma) for d, _, _ in dxy]
+    w = [kernel_fn(d) for d, _, _ in dxy]
     y_match = [1 if y == y_test else 0 for _, _, y in dxy]
     
     # Initialize Shapley values array

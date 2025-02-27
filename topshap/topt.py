@@ -73,7 +73,7 @@ class BallExpander:
     testidx2aug = {}
     testidx2augidx = dict()
 
-    def __init__(self, D, Z_test, tol=1e-6):
+    def __init__(self, D, Z_test, kernel_fn, tol=1e-6):
         """
         Args:
             D: List of training data tuples (x, y)
@@ -85,12 +85,13 @@ class BallExpander:
 
         self.D = D
         self.Z_test = Z_test
+        self.kernel_fn = kernel_fn
         self.tol = tol
 
         # Create augmented list with both training and test points
         self.augmented = [Point(*z, idx, True) for idx, z in enumerate(Z_test)] + [Point(*z, idx, False) for idx, z in enumerate(D)]
 
-    def build_landmarks(self, clusters, testidx2center, K, sigma):
+    def build_landmarks(self, clusters, testidx2center, K):
         """
         Compute distances to each landmark and sort the augmented list.
         """
@@ -111,7 +112,7 @@ class BallExpander:
 
             # Compute Shapley values for landmarks by recursive formula
             self.test_stops[idx_center] = True # skip the landmark in future ball expansion
-            sorted_w = [kernel_value(distances[i], sigma) for i in sorted_inds]
+            sorted_w = [self.kernel_fn(distances[i]) for i in sorted_inds]
             cnt = 0
             s_prev, w_prev = None, None
             y_test = self.Z_test[idx_center][1]
@@ -168,7 +169,7 @@ class BallExpander:
                         dist_right if end < len(sorted_aug) else float('inf'))
         return points, dist_radius
 
-    def expand(self, i, K, sigma):
+    def expand(self, i, K):
         n = len(self.D)
         lb_base_sum, up_base_sum = 0, 0
         lbs_diff_point, ups_diff_point = np.zeros(len(self.D)), np.zeros(len(self.D))
@@ -198,14 +199,14 @@ class BallExpander:
                 if d <= dist_radius:
                     bar_ball_size += 1
                     if rank > 1:
-                        w = kernel_value(d, sigma)
+                        w = self.kernel_fn(d)
                         term2_fixed[rank] = w * K / rank / (rank-1) + term2_fixed[rank-1]
                         rank_fixed_max = max(rank_fixed_max, rank)
                 else:
-                    weight_max_in_ball = max(weight_max_in_ball, kernel_value(d, sigma))
+                    weight_max_in_ball = max(weight_max_in_ball, self.kernel_fn(d))
             
             # Compute lower bound on weight for points not in ball
-            weight_out_of_ball = kernel_value(dist_radius, sigma)
+            weight_out_of_ball = self.kernel_fn(dist_radius)
             weight_for_lb = max(weight_max_in_ball, weight_out_of_ball)
             #print(f"bar_ball_size={bar_ball_size}, weight_max_in_ball={weight_max_in_ball}, weight_for_lb={weight_for_lb}")
             
@@ -230,7 +231,7 @@ class BallExpander:
             
             # Compute point-specific bounds
             for rank, (d, x, y, dataidx) in enumerate(sorted_ball, 1): # rank is 1-based
-                w = kernel_value(d, sigma)
+                w = self.kernel_fn(d)
                 j0 = max(K, rank + 1)
 
                 term1 = min(K, rank) * w * (1 if y == y_test else 0) / rank
@@ -265,7 +266,7 @@ class BallExpander:
         return lbs_point, ups_point
 
 
-def shapley_top(D, Z_test, t, K, sigma, n_clst=25, i_start=64, tol=1e-5, tol_ball=1e-6):
+def shapley_top(D, Z_test, t, K, kernel_fn, n_clst=25, i_start=64, tol=1e-5, tol_ball=1e-6):
     """
     Compute top-t Shapley values using landmark-based ball expansion.
     
@@ -274,7 +275,6 @@ def shapley_top(D, Z_test, t, K, sigma, n_clst=25, i_start=64, tol=1e-5, tol_bal
         Z_test: List of test points (x_test, y_test)
         t: Number of top values to retrieve
         K: Number of neighbors for KNN
-        sigma: Bandwidth for Gaussian kernel
         n_clst: Number of clusters for k-center algorithm
         i_start: Starting ball radius
         tol: Tolerance between top-t lower bound and top-1 upper bound
@@ -293,8 +293,8 @@ def shapley_top(D, Z_test, t, K, sigma, n_clst=25, i_start=64, tol=1e-5, tol_bal
 
     # Compute distances to landmark (center) and sort
     start = time.time()
-    expander = BallExpander(D, Z_test, tol_ball)
-    expander.build_landmarks(clusters, testidx2center, K, sigma)
+    expander = BallExpander(D, Z_test, kernel_fn, tol_ball)
+    expander.build_landmarks(clusters, testidx2center, K)
     end = time.time()
     print(f"landmark sorting took {end - start:.2f} seconds")
         
@@ -302,7 +302,7 @@ def shapley_top(D, Z_test, t, K, sigma, n_clst=25, i_start=64, tol=1e-5, tol_bal
     i = min(i_start, len(expander.augmented) // 2) # ball radius
     while i <= len(expander.augmented):
         # Compute lower and upper bounds for each data point by expanding the ball centered at each test point
-        lbs_point, ups_point = expander.expand(i, K, sigma)
+        lbs_point, ups_point = expander.expand(i, K)
         
         # Compare top-t lower bounds with top-1 upper bound
         top_t_idx = np.argsort(lbs_point)[-t:] 
