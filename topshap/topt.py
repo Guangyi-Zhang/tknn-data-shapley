@@ -266,7 +266,7 @@ class BallExpander:
         return lbs_point, ups_point
 
 
-def shapley_top(D, Z_test, t, K, kernel_fn, n_clst=25, i_start=64, tol=1e-5, tol_ball=1e-6):
+def shapley_top(D, Z_test, t, K, kernel_fn, n_clst=25, i_start=64, tol_topt=1e-3, tol_ball=1e-6):
     """
     Compute top-t Shapley values using landmark-based ball expansion.
     
@@ -314,7 +314,7 @@ def shapley_top(D, Z_test, t, K, kernel_fn, n_clst=25, i_start=64, tol=1e-5, tol
             if top_1_ub_idx in top_t_idx_set:
                 continue
             else:
-                if top_t_lb >= ups_point[top_1_ub_idx] - tol: # found top-t
+                if top_t_lb >= ups_point[top_1_ub_idx] - tol_topt: # found top-t
                     print(f"found top-t at i={i}: top_t_lb={top_t_lb}, top_1_ub={ups_point[top_1_ub_idx]}")
                     return top_t_idx[::-1] # reverse the order and start from the largest
                 else:
