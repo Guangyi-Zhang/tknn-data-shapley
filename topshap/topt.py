@@ -9,6 +9,28 @@ from topshap.helper import distance, kernel_value
 Point = namedtuple('Point', ['x', 'y', 'idx', 'is_test'])
 
 
+def random_center(Z_test, n_clst):
+    """
+    Randomly select n_clst test points as centers.
+    """
+    centers_idx = np.random.choice(len(Z_test), n_clst, replace=False)
+    clusters = {ci: [] for ci in centers_idx}
+
+    testidx2center = {}
+    for i, point in enumerate(Z_test):
+        best_center = None
+        best_d = float('inf')
+        for ci in centers_idx:
+            d = distance(point[0], Z_test[ci][0])
+            if d < best_d:
+                best_d = d
+                best_center = ci
+        clusters[best_center].append((i, best_d))
+        testidx2center[i] = (best_center, best_d)
+            
+    return clusters, testidx2center
+
+
 def kcenter(Z_test, n_clst):
     """
     Cluster the test points into n_clst clusters by k-center algorithm.
@@ -266,7 +288,7 @@ class BallExpander:
         return lbs_point, ups_point
 
 
-def shapley_top(D, Z_test, t, K, kernel_fn, n_clst=25, i_start=64, tol_topt=1e-3, tol_ball=1e-6):
+def shapley_top(D, Z_test, t, K, kernel_fn, center_type="kcenter", n_clst=25, i_start=64, tol_topt=1e-3, tol_ball=1e-6):
     """
     Compute top-t Shapley values using landmark-based ball expansion.
     
@@ -287,9 +309,14 @@ def shapley_top(D, Z_test, t, K, kernel_fn, n_clst=25, i_start=64, tol_topt=1e-3
     
     # Cluster the test points into n_clst clusters by k-center algorithm
     start = time.time()
-    clusters, testidx2center = kcenter(Z_test, n_clst)
+    if center_type == "kcenter":
+        clusters, testidx2center = kcenter(Z_test, n_clst)
+    elif center_type == "random":
+        clusters, testidx2center = random_center(Z_test, n_clst)
+    else:
+        raise ValueError(f"Invalid center type: {center_type}")
     end = time.time()
-    print(f"kcenter took {end - start:.2f} seconds")
+    print(f"{center_type} took {end - start:.2f} seconds")
 
     # Compute distances to landmark (center) and sort
     start = time.time()
