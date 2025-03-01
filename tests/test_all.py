@@ -22,9 +22,6 @@ def test_kcenter():
     clusters, testidx2center = kcenter_naive(Z_test, n_clst=3)
     assert list(clusters.keys()) == [0, 4, 2]
 
-    clusters, testidx2center = kcenter_naive(Z_test, n_clst=3, scan_centers=True)
-    assert list(clusters.keys()) == [0, 4, 2]
-
 
 def test_build_ball():
     pt_test = Point(x=np.array([0.5]), y=1, idx=0, is_test=True)

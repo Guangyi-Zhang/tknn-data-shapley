@@ -31,7 +31,7 @@ def random_center(Z_test, n_clst):
     return clusters, testidx2center
 
 
-def kcenter_naive(Z_test, n_clst, scan_centers=False):
+def kcenter_naive(Z_test, n_clst):
     """
     Cluster the test points into n_clst clusters by k-center algorithm.
     """
@@ -45,12 +45,7 @@ def kcenter_naive(Z_test, n_clst, scan_centers=False):
         next_center_idx = None
         for i in range(num_points):
             # Compute distance from Z_test[i] to its nearest already-chosen center.
-            if scan_centers:
-                d = min([distance(Z_test[i][0], Z_test[c][0]) for c in centers_idx])
-            else:
-                d = distance(Z_test[i][0], Z_test[centers_idx[-1]][0])
-                d = min(d, dist_min_to_centers[i])
-                dist_min_to_centers[i] = d
+            d = min([distance(Z_test[i][0], Z_test[c][0]) for c in centers_idx])
             if d > max_dist:
                 max_dist = d
                 next_center_idx = i
@@ -68,8 +63,8 @@ def kcenter_naive(Z_test, n_clst, scan_centers=False):
             if d < best_d:
                 best_d = d
                 best_center = ci
-        clusters[best_center].append((i, best_d))
-        testidx2center[i] = (best_center, best_d)
+        clusters[best_center].append(i)
+        testidx2center[i] = best_center
 
     return clusters, testidx2center
 
@@ -79,48 +74,33 @@ def kcenter(Z_test, n_clst):
     Cluster the test points into n_clst clusters by k-center algorithm.
     """
     # Use the furthest first (k-center) algorithm
-    # Speed up by tracking the minimum distance over already chosen centers for each point, and push them into a max heap
-    c_init = 0
-    centers_idx = [c_init] # Choose the first test point as the initial center.
-
-    # Initialize the heap
-    H = []
-    num_points = len(Z_test)
-    for i in range(num_points):
-        d = distance(Z_test[i][0], Z_test[c_init][0])
-        H.append((-d, i, len(centers_idx)))
-    heapq.heapify(H)
-
+    centers_idx = [0] # Choose the first test point as the initial center.
+    testidx2center = {i: 0 for i in range(len(Z_test))} # assign each test point to the nearest center, default to the first center
     # Select additional centers until reaching n_clst (or all points if fewer)
+    num_points = len(Z_test)
+    dist_min_to_centers = [float('inf')] * num_points
     while len(centers_idx) < min(n_clst, num_points):
-        while True:
-            d, i, nc = heapq.heappop(H)
-            n_diff = len(centers_idx) - nc
-            if n_diff > 0:
-                d = min(-d, min([distance(Z_test[i][0], Z_test[c][0]) for c in centers_idx[-n_diff:]]))
-            else:
-                d = -d
-            heapq.heappush(H, (-d, i, len(centers_idx)))
-            if np.isclose(d, -H[0][0]):
-                break
-                
-        d, i, _ = heapq.heappop(H)
-        centers_idx.append(i)
+        max_dist = -1
+        next_center_idx = None
+        for i in range(num_points):
+            # Compute distance from Z_test[i] to its nearest already-chosen center.
+            d_prev = dist_min_to_centers[i]
+            d = distance(Z_test[i][0], Z_test[centers_idx[-1]][0])
+            if d < d_prev:
+                testidx2center[i] = centers_idx[-1] # re-assign
+                dist_min_to_centers[i] = d
+            d = min(d, d_prev)
+            if d > max_dist:
+                max_dist = d
+                next_center_idx = i
+        if next_center_idx is not None:
+            centers_idx.append(next_center_idx)
     
-    # Assign each test point to the nearest center, forming clusters.
+    # Form clusters
     clusters = {ci: [] for ci in centers_idx}
-    testidx2center = {}
-    for i, point in enumerate(Z_test):
-        best_center = None
-        best_d = float('inf')
-        for ci in centers_idx:
-            d = distance(point[0], Z_test[ci][0])
-            if d < best_d:
-                best_d = d
-                best_center = ci
-        clusters[best_center].append((i, best_d))
-        testidx2center[i] = (best_center, best_d)
-
+    for test_idx, center_idx in testidx2center.items():
+        clusters[center_idx].append(test_idx)
+    
     return clusters, testidx2center
 
 
@@ -167,12 +147,12 @@ class BallExpander:
             sorted_inds = np.argsort(distances)
             sorted_aug = [self.augmented[i] for i in sorted_inds]
 
-            for test_idx, _ in cluster:
+            for test_idx in cluster:
                 self.testidx2aug[test_idx] = sorted_aug
 
             # Create data index mapping and test positions
             for idx, z in enumerate(sorted_aug):
-                if z.is_test and testidx2center[z.idx][0] == idx_center:
+                if z.is_test and testidx2center[z.idx] == idx_center:
                     self.testidx2augidx[z.idx] = idx
 
             # Compute Shapley values for landmarks by recursive formula
@@ -244,7 +224,7 @@ class BallExpander:
                 continue
 
             x_test, y_test = z_test
-            idx_center, dist_center = self.testidx2center[test_idx]
+            idx_center = self.testidx2center[test_idx]
             landmark = self.Z_test[idx_center][0]
             points, dist_radius = self.build_ball(Point(*z_test, test_idx, True), i, landmark)
             #print(f"i={i}, dist_radius={dist_radius}, processed[{test_idx}].ids={processed[test_idx].ids}")
