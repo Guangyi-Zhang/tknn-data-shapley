@@ -311,7 +311,7 @@ class BallExpander:
         return lbs_point, ups_point
 
 
-def shapley_top(D, Z_test, t, K, kernel_fn, center_type="kcenter", n_clst=25, i_start=64, tol_topt=1e-3, tol_ball=1e-6):
+def shapley_top(D, Z_test, t, K, kernel_fn, t_ub=None, center_type="kcenter", n_clst=25, i_start=64, tol_topt=1e-3, tol_ball=1e-6):
     """
     Compute top-t Shapley values using landmark-based ball expansion.
     
@@ -329,6 +329,13 @@ def shapley_top(D, Z_test, t, K, kernel_fn, center_type="kcenter", n_clst=25, i_
     """
     if not Z_test:
         return np.zeros(len(D))
+    
+    # When t_ub is not None, allowed to return any top-t s.t. t <= t_ub
+    t_lb = t
+    if t_ub is None:
+        t_ub = t
+    else:
+        t_lb = 1
     
     # Cluster the test points into n_clst clusters by k-center algorithm
     start = time.time()
@@ -355,26 +362,31 @@ def shapley_top(D, Z_test, t, K, kernel_fn, center_type="kcenter", n_clst=25, i_
         lbs_point, ups_point = expander.expand(i, K)
         
         # Compare top-t lower bounds with top-1 upper bound
-        top_t_idx = np.argsort(lbs_point)[-t:] 
-        top_t_lb = np.min(lbs_point[top_t_idx])
-        top_t_idx_set = set(top_t_idx)
+        # Try every feasible t
+        j_start = 0
+        sorted_lb_idx = np.argsort(lbs_point)
         sorted_ub_idx = np.argsort(ups_point) 
-        for j in range(min(t+1, len(sorted_ub_idx))): # TODO: corner case t > len(D)
-            top_1_ub_idx = sorted_ub_idx[-j-1]
-            if top_1_ub_idx in top_t_idx_set:
-                continue
-            else:
-                if top_t_lb >= ups_point[top_1_ub_idx] - tol_topt: # found top-t
-                    print(f"found top-t at i={i}: top_t_lb={top_t_lb}, top_1_ub={ups_point[top_1_ub_idx]}")
-                    return top_t_idx[::-1] # reverse the order and start from the largest
-                else:
-                    print(f"i={i}: top_t_lb={top_t_lb}, top_1_ub={ups_point[top_1_ub_idx]}, #stops={sum(expander.test_stops)}")
-                    # find the largest index of a point in sorted_ub_idx whose ups_point[idx] <= top_t_lb
-                    # for idx in range(len(sorted_ub_idx)-1, -1, -1):
-                    #     if ups_point[sorted_ub_idx[idx]] <= top_t_lb:
-                    #         print(f"count idx={idx} out of {len(sorted_ub_idx)}: ub={ups_point[sorted_ub_idx[idx]]}")
-                    #         break
-                    break
+        for t in range(t_lb, t_ub+1):
+            top_t_idx = sorted_lb_idx[-t:] 
+            top_t_lb = np.min(lbs_point[top_t_idx])
+            top_t_idx_set = set(top_t_idx)
+            for j in range(j_start, min(t+1, len(sorted_ub_idx))): # TODO: corner case t > len(D)
+                top_1_ub_idx = sorted_ub_idx[-j-1]
+                if top_1_ub_idx in top_t_idx_set:
+                    continue
+                else: # 1st upper bound not in top-t lower bounds
+                    j_start = j # j_start only increases as t increases
+                    if top_t_lb >= ups_point[top_1_ub_idx] - tol_topt: # found top-t
+                        print(f"found top-t at i={i}: top_t_lb={top_t_lb}, top_1_ub={ups_point[top_1_ub_idx]}")
+                        return top_t_idx[::-1] # reverse the order and start from the largest
+                    else:
+                        print(f"i={i}: top_t_lb={top_t_lb}, top_1_ub={ups_point[top_1_ub_idx]}, #stops={sum(expander.test_stops)}")
+                        # find the largest index of a point in sorted_ub_idx whose ups_point[idx] <= top_t_lb
+                        # for idx in range(len(sorted_ub_idx)-1, -1, -1):
+                        #     if ups_point[sorted_ub_idx[idx]] <= top_t_lb:
+                        #         print(f"count idx={idx} out of {len(sorted_ub_idx)}: ub={ups_point[sorted_ub_idx[idx]]}")
+                        #         break
+                        break
 
         # Continue and double the ball radius
         if i != len(expander.augmented):

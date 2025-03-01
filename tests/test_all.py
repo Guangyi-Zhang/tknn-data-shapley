@@ -89,6 +89,9 @@ def test_shapley_top():
     top_idx = shapley_top(D, Z_test, kernel_fn=partial(kernel_value, sigma=1), t=3, K=2, n_clst=1)
     assert top_idx == None # fail to find [0, 1, 2]
 
+    top_idx = shapley_top(D, Z_test, kernel_fn=partial(kernel_value, sigma=1), t=3, K=2, n_clst=1, t_ub=3)
+    assert np.all(top_idx == [0])
+
 
 def test_shapley_top_2dplanes():
     # Test on 2dplanes.arff
