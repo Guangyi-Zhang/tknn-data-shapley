@@ -31,27 +31,31 @@ def random_center(Z_test, n_clst):
     return clusters, testidx2center
 
 
-def kcenter_naive(Z_test, n_clst):
+def kcenter_naive(Z_test, n_clst, scan_centers=False):
     """
     Cluster the test points into n_clst clusters by k-center algorithm.
     """
     # Use the furthest first (k-center) algorithm:
-    centers_idx = set([0]) # Choose the first test point as the initial center.
+    centers_idx = [0] # Choose the first test point as the initial center.
     # Select additional centers until reaching n_clst (or all points if fewer)
     num_points = len(Z_test)
+    dist_min_to_centers = [float('inf')] * num_points
     while len(centers_idx) < min(n_clst, num_points):
         max_dist = -1
         next_center_idx = None
         for i in range(num_points):
-            if i in centers_idx:
-                continue
             # Compute distance from Z_test[i] to its nearest already-chosen center.
-            d = min([distance(Z_test[i][0], Z_test[c][0]) for c in centers_idx])
+            if scan_centers:
+                d = min([distance(Z_test[i][0], Z_test[c][0]) for c in centers_idx])
+            else:
+                d = distance(Z_test[i][0], Z_test[centers_idx[-1]][0])
+                d = min(d, dist_min_to_centers[i])
+                dist_min_to_centers[i] = d
             if d > max_dist:
                 max_dist = d
                 next_center_idx = i
         if next_center_idx is not None:
-            centers_idx.add(next_center_idx)
+            centers_idx.append(next_center_idx)
     
     # Assign each test point to the nearest center, forming clusters.
     clusters = {ci: [] for ci in centers_idx}
