@@ -3,23 +3,27 @@ import numpy as np
 from topshap.helper import distance, kernel_value
 
 
-def shapley_bf(D, Z_test, K, kernel_fn):
+def shapley_bf(D, Z_test, K, kernel_fn, normalize=False):
     """
     Compute Shapley values for weighted KNN using brute force.
     """
     if not isinstance(Z_test, list):
-        return shapley_bf_single(D, Z_test, K, kernel_fn)
+        return shapley_bf_single(D, Z_test, K, kernel_fn, normalize)
     
     n_test = len(Z_test)
     shapley_values = np.zeros(len(D))
     for i in range(n_test):
-        s = shapley_bf_single(D, Z_test[i], K, kernel_fn)
-        shapley_values += s
+        if normalize:
+            s, w = shapley_bf_single(D, Z_test[i], K, kernel_fn, return_weights=True)
+            shapley_values += s / max(w) # normalize by max weight
+        else:
+            s = shapley_bf_single(D, Z_test[i], K, kernel_fn)
+            shapley_values += s
 
     return shapley_values / n_test
     
 
-def shapley_bf_single(D, z_test, K, kernel_fn):
+def shapley_bf_single(D, z_test, K, kernel_fn, return_weights=False):
     """
     Compute Shapley values for weighted KNN using recursive formula.
     
@@ -62,4 +66,6 @@ def shapley_bf_single(D, z_test, K, kernel_fn):
         )
         s[idx_j] = s[idx_j_plus_1] + term
         
+    if return_weights:
+        return s, w
     return s 
