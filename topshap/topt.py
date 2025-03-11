@@ -119,11 +119,15 @@ def shapley_tknn(D, Z_test, K, radius, kernel_fn, n_clst=10):
     Z_test_D = [z for idx, z in enumerate(Z_test)] + [z for idx, z in enumerate(D)]
 
     # k-center clustering over D and Z_test
+    start_time = time.process_time()
     clusters, testidx2center = kcenter(Z_test_D, n_clst)
-    
+    runtime_kcenter = time.process_time() - start_time
+    print(f"kcenter took {runtime_kcenter:.2f} seconds")
+
     # Create a new clusters_D from clusters, by dropping the test points, and recover the true data_idx
     clusters_Didx = {ci: [(i - len(Z_test)) for i in cluster if i >= len(Z_test)] for ci, cluster in clusters.items()}
     clusters_D = {ci: [D[i] for i in cluster] for ci, cluster in clusters_Didx.items()}
+    print(f"sizes of clusters: {[len(cluster) for cluster in clusters_D.values()]}")
 
     # Compute Shapley values for each cluster
     shapley_values = np.zeros(len(D))

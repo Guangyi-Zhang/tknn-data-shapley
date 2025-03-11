@@ -3,21 +3,21 @@ import numpy as np
 from topshap.helper import distance, kernel_value
 
 
-def shapley_bf(D, Z_test, K, kernel_fn, normalize=False):
+def shapley_bf(D, Z_test, K, kernel_fn, normalize=False, radius=None):
     """
     Compute Shapley values for weighted KNN using brute force.
     """
     if not isinstance(Z_test, list):
-        return shapley_bf_single(D, Z_test, K, kernel_fn, normalize)
+        Z_test = [Z_test]
     
     n_test = len(Z_test)
     shapley_values = np.zeros(len(D))
     for i in range(n_test):
         if normalize:
-            s, w = shapley_bf_single(D, Z_test[i], K, kernel_fn, return_weights=True)
+            s, w = shapley_bf_single(D, Z_test[i], K, kernel_fn, return_weights=True, radius=radius)
             shapley_values += s / max(w) # normalize by max weight
         else:
-            s = shapley_bf_single(D, Z_test[i], K, kernel_fn)
+            s = shapley_bf_single(D, Z_test[i], K, kernel_fn, radius=radius)
             shapley_values += s
 
     return shapley_values / n_test
@@ -46,6 +46,8 @@ def shapley_bf_single(D, z_test, K, kernel_fn, return_weights=False, radius=None
     sorted_dxy_idx = sorted(range(len(dxy)), key=lambda i: dxy[i][0]) # argsort
     if radius is not None:
         sorted_dxy_idx = [i for i in sorted_dxy_idx if dxy[i][0] <= radius]
+        if len(sorted_dxy_idx) == 0:
+            return np.zeros(n)
     
     # Extract weights and label matches
     w = [kernel_fn(d) for d, _, _ in dxy]
