@@ -58,7 +58,7 @@ def shapley_bf_single(D, z_test, K, kernel_fn, return_weights=False, radius=None
     
     # Base case: farthest point
     idx_n = sorted_dxy_idx[-1]
-    s[idx_n] = (K/n) * w[idx_n] * y_match[idx_n]
+    s[idx_n] = (K/len(sorted_dxy_idx)) * w[idx_n] * y_match[idx_n]
     
     # Recursive calculation from 2nd farthest to nearest
     for j in range(len(sorted_dxy_idx)-2, -1, -1):
