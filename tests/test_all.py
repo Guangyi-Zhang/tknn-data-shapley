@@ -3,7 +3,7 @@ import numpy as np
 from functools import partial
 
 from topshap.helper import distance, kernel_value
-from topshap.topt import BallExpander, Point, shapley_top, kcenter, kcenter_naive
+from topshap.topt import BallExpander, Point, shapley_top, kcenter, kcenter_naive, shapley_tknn
 from topshap.naive import shapley_bf
 
 
@@ -70,6 +70,23 @@ def test_build_ball():
     new_points, dist_radius = expander.build_ball(pt_test, i=2, landmark=landmark)
     assert len(new_points) == 3
     assert np.isclose(dist_radius, 1.5)
+
+
+def test_shapley_tknn():
+    D = [
+        (np.array([0.5]), 1),
+        (np.array([2.0]), 1),
+        (np.array([10.5]), 1),
+        (np.array([12.0]), 1),
+        (np.array([11.0]), 0),
+        (np.array([1.0]), 0)
+    ]
+    Z_test = [(np.array([0.0]), 1), (np.array([10.0]), 1)]
+
+    shapley_values = shapley_tknn(D, Z_test, K=2, radius=3, kernel_fn=partial(kernel_value, sigma=1), n_clst=2)
+    answer = np.array([0.8374, 0.0902, 0.8374, 0.0902, -0.0451, -0.0451]) / 2
+
+    assert np.allclose(shapley_values, answer, atol=1e-03)
 
 
 def test_shapley_top():

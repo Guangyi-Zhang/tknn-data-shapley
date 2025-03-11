@@ -4,6 +4,7 @@ import time
 import heapq
 
 from topshap.helper import distance, kernel_value
+from topshap.naive import shapley_bf_single
 
 
 Point = namedtuple('Point', ['x', 'y', 'idx', 'is_test'])
@@ -79,7 +80,7 @@ def kcenter(Z_test, n_clst):
     # Select additional centers until reaching n_clst (or all points if fewer)
     num_points = len(Z_test)
     dist_min_to_centers = [float('inf')] * num_points
-    while len(centers_idx) < min(n_clst, num_points):
+    while len(centers_idx) < min(n_clst, num_points) + 1:
         max_dist = -1
         next_center_idx = None
         for i in range(num_points):
@@ -93,6 +94,9 @@ def kcenter(Z_test, n_clst):
             if d > max_dist:
                 max_dist = d
                 next_center_idx = i
+        if len(centers_idx) == min(n_clst, num_points): 
+            # one more round to get testidx2center right
+            break
         if next_center_idx is not None:
             centers_idx.append(next_center_idx)
     
@@ -102,6 +106,34 @@ def kcenter(Z_test, n_clst):
         clusters[center_idx].append(test_idx)
     
     return clusters, testidx2center
+
+
+def shapley_tknn(D, Z_test, K, radius, kernel_fn, n_clst=10):
+    """
+    Compute Shapley values for truncated KNN using k-center clustering.
+    """
+    if not isinstance(Z_test, list):
+        Z_test = [Z_test]
+    
+    # stack D and Z_test
+    Z_test_D = [z for idx, z in enumerate(Z_test)] + [z for idx, z in enumerate(D)]
+
+    # k-center clustering over D and Z_test
+    clusters, testidx2center = kcenter(Z_test_D, n_clst)
+    
+    # Create a new clusters_D from clusters, by dropping the test points, and recover the true data_idx
+    clusters_Didx = {ci: [(i - len(Z_test)) for i in cluster if i >= len(Z_test)] for ci, cluster in clusters.items()}
+    clusters_D = {ci: [D[i] for i in cluster] for ci, cluster in clusters_Didx.items()}
+
+    # Compute Shapley values for each cluster
+    shapley_values = np.zeros(len(D))
+    for i in range(len(Z_test)):
+        cluster = clusters_D[testidx2center[i]]
+        s = shapley_bf_single(cluster, Z_test[i], K, kernel_fn, radius=radius)
+        for j, data_idx in enumerate(clusters_Didx[testidx2center[i]]):
+            shapley_values[data_idx] = s[j]
+
+    return shapley_values / len(Z_test)
 
 
 class BallExpander:
