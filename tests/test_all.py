@@ -134,6 +134,10 @@ def test_shapley_tknn():
 
     assert np.allclose(shapley_values, answer, atol=1e-03)
 
+    shapley_values = shapley_tknn(D, Z_test, K=2, radius=3, kernel_fn=partial(kernel_value, sigma=1), n_clst=1)
+    values_true = shapley_bf(D, Z_test, K=2, kernel_fn=partial(kernel_value, sigma=1), radius=3)
+    assert np.allclose(shapley_values, values_true, atol=1e-03)
+
 
 def test_shapley_top():
     D = [

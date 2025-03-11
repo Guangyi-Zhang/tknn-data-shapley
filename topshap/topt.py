@@ -163,7 +163,7 @@ def shapley_tknn(D, Z_test, K, radius, kernel_fn, n_clst=10):
         cluster = clusters_D[testidx2center[i]]
         s = shapley_bf_single(cluster, Z_test[i], K, kernel_fn, radius=radius)
         for j, data_idx in enumerate(clusters_Didx[testidx2center[i]]):
-            shapley_values[data_idx] = s[j]
+            shapley_values[data_idx] += s[j]
 
     return shapley_values / len(Z_test)
 
