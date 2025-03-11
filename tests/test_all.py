@@ -23,6 +23,52 @@ def test_kcenter():
     assert list(clusters.keys()) == [0, 4, 2]
 
 
+def test_kcenter_robust():
+    Z_test = [
+        (np.array([0.0]), 1),
+
+        (np.array([5.0]), 1),
+
+        (np.array([2.01]), 1),
+        (np.array([2.02]), 1),
+        (np.array([2.03]), 1),
+        (np.array([2.04]), 1),
+        (np.array([2.05]), 1),
+        (np.array([2.06]), 1),
+        (np.array([2.07]), 1),
+        (np.array([2.08]), 1),
+        (np.array([2.09]), 1),
+
+        (np.array([2.1]), 1),
+        (np.array([2.11]), 1),
+        (np.array([2.12]), 1),
+        (np.array([2.13]), 1),
+        (np.array([2.14]), 1),
+        (np.array([2.15]), 1),
+        (np.array([2.16]), 1),
+        (np.array([2.17]), 1),
+        (np.array([2.18]), 1),
+        (np.array([2.19]), 1),
+
+        (np.array([2.2]), 1),
+        (np.array([2.21]), 1),
+        (np.array([2.22]), 1),
+        (np.array([2.23]), 1),
+        (np.array([2.24]), 1),
+        (np.array([2.25]), 1),
+        (np.array([2.26]), 1),
+        (np.array([2.27]), 1),
+        (np.array([2.28]), 1),
+        (np.array([2.29]), 1),        
+    ]
+
+    # 32/2/10
+    clusters, testidx2center = kcenter(Z_test, n_clst=2, be_robust=True)
+    assert 1 not in clusters
+    print(clusters)
+    print(testidx2center)
+
+
 def test_build_ball():
     pt_test = Point(x=np.array([0.5]), y=1, idx=0, is_test=True)
     

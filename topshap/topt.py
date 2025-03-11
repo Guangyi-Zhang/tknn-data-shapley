@@ -70,9 +70,11 @@ def kcenter_naive(Z_test, n_clst):
     return clusters, testidx2center
 
 
-def kcenter(Z_test, n_clst):
+def kcenter(Z_test, n_clst, be_robust=False):
     """
     Cluster the test points into n_clst clusters by k-center algorithm.
+
+    When be_robust is True, if a new center induces a tiny cluster, then ignore it and doesn't increment the center count.
     """
     # Use the furthest first (k-center) algorithm
     centers_idx = [0] # Choose the first test point as the initial center.
@@ -80,9 +82,13 @@ def kcenter(Z_test, n_clst):
     # Select additional centers until reaching n_clst (or all points if fewer)
     num_points = len(Z_test)
     dist_min_to_centers = [float('inf')] * num_points
-    while len(centers_idx) < min(n_clst, num_points) + 1:
+    n_small = 0
+    map_small_center_to_prev = dict()
+    while len(centers_idx) - n_small < min(n_clst, num_points) + 1:
         max_dist = -1
         next_center_idx = None
+        cnt = 0
+        prev = testidx2center[centers_idx[-1]]
         for i in range(num_points):
             # Compute distance from Z_test[i] to its nearest already-chosen center.
             d_prev = dist_min_to_centers[i]
@@ -90,20 +96,41 @@ def kcenter(Z_test, n_clst):
             if d < d_prev:
                 testidx2center[i] = centers_idx[-1] # re-assign
                 dist_min_to_centers[i] = d
+                cnt += 1
             d = min(d, d_prev)
             if d > max_dist:
                 max_dist = d
                 next_center_idx = i
-        if len(centers_idx) == min(n_clst, num_points): 
+        if be_robust and cnt < max(1, len(Z_test) / n_clst / 10): # less than 10% of the average cluster size
+            n_small += 1
+            map_small_center_to_prev[centers_idx[-1]] = prev
+        if len(centers_idx) - n_small == min(n_clst, num_points): 
             # one more round to get testidx2center right
             break
         if next_center_idx is not None:
             centers_idx.append(next_center_idx)
     
     # Form clusters
-    clusters = {ci: [] for ci in centers_idx}
-    for test_idx, center_idx in testidx2center.items():
-        clusters[center_idx].append(test_idx)
+    if be_robust:
+        # merge small clusters into its previous center
+        for center_idx in centers_idx:
+            if center_idx not in map_small_center_to_prev:
+                continue
+            while map_small_center_to_prev[center_idx] in map_small_center_to_prev:
+                prev_center_idx = map_small_center_to_prev[center_idx]
+                map_small_center_to_prev[center_idx] = map_small_center_to_prev[prev_center_idx]
+
+        clusters = defaultdict(list)
+        for test_idx, center_idx in testidx2center.items():
+            if center_idx not in map_small_center_to_prev:
+                clusters[center_idx].append(test_idx)
+            else:
+                clusters[map_small_center_to_prev[center_idx]].append(test_idx)
+                testidx2center[test_idx] = map_small_center_to_prev[center_idx]
+    else:
+        clusters = {ci: [] for ci in centers_idx}
+        for test_idx, center_idx in testidx2center.items():
+            clusters[center_idx].append(test_idx)
     
     return clusters, testidx2center
 
@@ -120,6 +147,7 @@ def shapley_tknn(D, Z_test, K, radius, kernel_fn, n_clst=10):
 
     # k-center clustering over D and Z_test
     start_time = time.process_time()
+    #clusters, testidx2center = kcenter(Z_test_D, n_clst, be_robust=True)
     clusters, testidx2center = kcenter(Z_test_D, n_clst)
     runtime_kcenter = time.process_time() - start_time
     print(f"kcenter took {runtime_kcenter:.2f} seconds")
