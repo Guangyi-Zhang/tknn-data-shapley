@@ -3,8 +3,46 @@ import numpy as np
 from functools import partial
 
 from topshap.helper import distance, kernel_value
-from topshap.topt import BallExpander, Point, shapley_top, kcenter, kcenter_naive, shapley_tknn
+from topshap.topt import BallExpander, Point, shapley_top, kcenter, kcenter_naive, shapley_tknn, kmeans
 from topshap.naive import shapley_bf
+
+
+def test_kmeans():
+    # Create synthetic data with 3 clear clusters in 2D space
+    np.random.seed(42)
+    
+    # Generate 3 clusters of points
+    cluster1 = [(np.array([1.0, 1.0]) + np.random.randn(2) * 0.1, 1) for _ in range(10)]
+    cluster2 = [(np.array([5.0, 5.0]) + np.random.randn(2) * 0.1, 2) for _ in range(10)]
+    cluster3 = [(np.array([1.0, 5.0]) + np.random.randn(2) * 0.1, 3) for _ in range(10)]
+    
+    Z_test = cluster1 + cluster2 + cluster3
+    
+    # Run kmeans clustering
+    n_clst = 3
+    clusters, testidx2center = kmeans(Z_test, n_clst)
+    
+    # Verify the output
+    # Check that the number of clusters is correct
+    assert len(clusters) == n_clst
+    
+    # Check that all test points are assigned to a cluster
+    all_assigned_points = []
+    for center, points in clusters.items():
+        all_assigned_points.extend(points)
+    assert sorted(all_assigned_points) == list(range(len(Z_test)))
+    
+    # Check that testidx2center mapping is correct
+    for test_idx, center_idx in testidx2center.items():
+        assert test_idx in clusters[center_idx]
+
+    c = testidx2center[0]
+    assert np.all(sorted(clusters[c]) == [0,1,2,3,4,5,6,7,8,9])
+    
+    # Test with more clusters than points
+    small_Z_test = Z_test[:2]
+    clusters_small, testidx2center_small = kmeans(small_Z_test, 5)
+    assert len(clusters_small) == len(small_Z_test)
 
 
 def test_kcenter():

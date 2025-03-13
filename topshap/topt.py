@@ -70,7 +70,7 @@ def kcenter_naive(Z_test, n_clst):
     return clusters, testidx2center
 
 
-def kcenter(Z_test, n_clst, be_robust=False):
+def kcenter(Z_test, n_clst, be_robust=False, min_radius=None):
     """
     Cluster the test points into n_clst clusters by k-center algorithm.
 
@@ -107,6 +107,8 @@ def kcenter(Z_test, n_clst, be_robust=False):
         if len(centers_idx) - n_small == min(n_clst, num_points): 
             # one more round to get testidx2center right
             break
+        if min_radius is not None and max_dist < min_radius:
+            break
         if next_center_idx is not None:
             centers_idx.append(next_center_idx)
     
@@ -135,6 +137,40 @@ def kcenter(Z_test, n_clst, be_robust=False):
     return clusters, testidx2center
 
 
+def kmeans(Z_test, n_clst):
+    """
+    Cluster the test points into n_clst clusters by sklearn k-means++ algorithm.
+    Return the clusters and the testidx2center mapping.
+    """
+    from sklearn.cluster import KMeans
+    
+    # Extract feature vectors from test points
+    X = np.array([z[0] for z in Z_test])
+    
+    # Apply KMeans with k-means++ initialization (which is the default)
+    kmeans = KMeans(n_clusters=min(n_clst, len(X)), init='k-means++', random_state=0)
+    labels = kmeans.fit_predict(X)
+    centers = kmeans.cluster_centers_
+    
+    # Find the test point index closest to each cluster center
+    center_indices = []
+    for center in centers:
+        distances = [distance(center, Z_test[i][0]) for i in range(len(Z_test))]
+        center_idx = np.argmin(distances)
+        center_indices.append(center_idx)
+    
+    # Assign each test point to the nearest center
+    clusters = {ci: [] for ci in center_indices}
+    testidx2center = {}
+    
+    for i, label in enumerate(labels):
+        cluster_center_idx = center_indices[label]
+        clusters[cluster_center_idx].append(i)
+        testidx2center[i] = cluster_center_idx
+    
+    return clusters, testidx2center
+
+
 def shapley_tknn(D, Z_test, K, radius, kernel_fn, n_clst=10):
     """
     Compute Shapley values for truncated KNN using k-center clustering.
@@ -143,19 +179,31 @@ def shapley_tknn(D, Z_test, K, radius, kernel_fn, n_clst=10):
         Z_test = [Z_test]
     
     # stack D and Z_test
-    Z_test_D = [z for idx, z in enumerate(Z_test)] + [z for idx, z in enumerate(D)]
+    #Z_test_D = [z for idx, z in enumerate(Z_test)] + [z for idx, z in enumerate(D)]
 
     # k-center clustering over D and Z_test
     start_time = time.process_time()
     #clusters, testidx2center = kcenter(Z_test_D, n_clst, be_robust=True)
-    clusters, testidx2center = kcenter(Z_test_D, n_clst)
+    #clusters, testidx2center = kcenter(Z_test_D, n_clst, min_radius=2*radius)
+    #clusters, testidx2center = kmeans(Z_test_D, n_clst)
+    clusters, testidx2center = kcenter(Z_test, n_clst)
+
+    # assign each data point to the nearest cluster center
+    clusters_Didx = {ci: [] for ci in clusters.keys()}
+    centers = [ci for ci in clusters.keys()]
+    for i in range(len(D)):
+        dists = [distance(D[i][0], Z_test[ci][0]) for ci in clusters.keys()]
+        ci = np.argmin(dists)
+        clusters_Didx[centers[ci]].append(i)
+    clusters_D = {ci: [D[i] for i in cluster] for ci, cluster in clusters_Didx.items()}
+
     runtime_kcenter = time.process_time() - start_time
-    print(f"kcenter took {runtime_kcenter:.2f} seconds")
+    print(f"kcenter/kmeans took {runtime_kcenter:.2f} seconds with #clusters={len(clusters)}")
 
     # Create a new clusters_D from clusters, by dropping the test points, and recover the true data_idx
-    clusters_Didx = {ci: [(i - len(Z_test)) for i in cluster if i >= len(Z_test)] for ci, cluster in clusters.items()}
-    clusters_D = {ci: [D[i] for i in cluster] for ci, cluster in clusters_Didx.items()}
-    print(f"sizes of clusters: {[len(cluster) for cluster in clusters_D.values()]}")
+    #clusters_Didx = {ci: [(i - len(Z_test)) for i in cluster if i >= len(Z_test)] for ci, cluster in clusters.items()}
+    #clusters_D = {ci: [D[i] for i in cluster] for ci, cluster in clusters_Didx.items()}
+    print(f"sizes of clusters: {[len(cluster) for cluster in clusters_D.values()]} and ratio={sum([len(cluster) for cluster in clusters_D.values()]) / len(D)}")
 
     # Compute Shapley values for each cluster
     shapley_values = np.zeros(len(D))
@@ -164,7 +212,7 @@ def shapley_tknn(D, Z_test, K, radius, kernel_fn, n_clst=10):
         s = shapley_bf_single(cluster, Z_test[i], K, kernel_fn, radius=radius)
         for j, data_idx in enumerate(clusters_Didx[testidx2center[i]]):
             shapley_values[data_idx] += s[j]
-
+    
     return shapley_values / len(Z_test)
 
 
