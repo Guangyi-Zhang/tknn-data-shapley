@@ -528,15 +528,16 @@ def shapley_tknn_expand(D, Z_test, K, radius, kernel_fn, center_type="kcenter", 
         z_test = Z_test[i]
         landmark = Z_test[testidx2center[i]][0]
         cluster = expander.build_ball_by_radius(Point(*z_test, i, True), radius, landmark)
+        # sort cluster by idx, to match the exact order of D, or it may yield discrepancy against shapley_bf_single(D); though not necessary in practice
+        cluster = sorted(cluster, key=lambda x: x.idx)
         cluster_D = [(pt.x, pt.y) for pt in cluster]
         cluster_Didx = [pt.idx for pt in cluster]
-        s = shapley_bf_single(cluster_D, Z_test[i], K, kernel_fn, radius=radius)
-        s_full = np.zeros(len(D))
+        s = shapley_bf_single(cluster_D, z_test, K, kernel_fn, radius=radius)
         for j, data_idx in enumerate(cluster_Didx):
             shapley_values[data_idx] += s[j]
-            s_full[data_idx] = s[j]
-
+        
         n_cluster += len(cluster)
+
     print(f"avg n_cluster/D={n_cluster / len(Z_test) / len(D):.6f}")
     
     return shapley_values / len(Z_test)
