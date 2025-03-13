@@ -3,7 +3,7 @@ import numpy as np
 from functools import partial
 
 from topshap.helper import distance, kernel_value
-from topshap.topt import BallExpander, Point, shapley_top, kcenter, kcenter_naive, shapley_tknn, kmeans
+from topshap.topt import BallExpander, Point, shapley_top, kcenter, kcenter_naive, shapley_tknn, kmeans, shapley_tknn_expand
 from topshap.naive import shapley_bf
 
 
@@ -173,6 +173,15 @@ def test_shapley_tknn():
     assert np.allclose(shapley_values, answer, atol=1e-03)
 
     shapley_values = shapley_tknn(D, Z_test, K=2, radius=3, kernel_fn=partial(kernel_value, sigma=1), n_clst=1)
+    values_true = shapley_bf(D, Z_test, K=2, kernel_fn=partial(kernel_value, sigma=1), radius=3)
+    assert np.allclose(shapley_values, values_true, atol=1e-03)
+
+    shapley_values = shapley_tknn_expand(D, Z_test, K=2, radius=3, kernel_fn=partial(kernel_value, sigma=1), n_clst=2)
+    answer = np.array([0.8374, 0.0902, 0.8374, 0.0902, -0.0451, -0.0451]) / 2
+
+    assert np.allclose(shapley_values, answer, atol=1e-03)
+
+    shapley_values = shapley_tknn_expand(D, Z_test, K=2, radius=3, kernel_fn=partial(kernel_value, sigma=1), n_clst=1)
     values_true = shapley_bf(D, Z_test, K=2, kernel_fn=partial(kernel_value, sigma=1), radius=3)
     assert np.allclose(shapley_values, values_true, atol=1e-03)
 

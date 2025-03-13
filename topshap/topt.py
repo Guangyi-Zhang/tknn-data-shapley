@@ -290,6 +290,77 @@ class BallExpander:
                 cnt += 1
                 s_prev, w_prev = s, w
 
+    def build_ball_by_radius(self, pt_test, radius, landmark):
+        """
+        Build a ball of radius (by distance) around z_test along the sorted augmented list.
+        
+        Args:
+            pt_test: Point namedtuple containing test point information
+            radius: Maximum distance from test point to include in ball
+            landmark: Coordinates of the landmark (center) of the cluster
+            
+        Returns:
+            List of Point objects within the specified radius
+        """
+        x_test, y_test = pt_test.x, pt_test.y
+        sorted_aug = self.testidx2aug[pt_test.idx]
+        pos = self.testidx2augidx[pt_test.idx]
+        
+        points = []
+        
+        # Get distance from test point to landmark
+        dist_test_to_landmark = distance(x_test, landmark)
+
+        # Expand to the left (points before the test point in the sorted list)
+        left = pos - 1
+        while left >= 0:
+            x, y, dataidx, is_test = sorted_aug[left]
+            if is_test:
+                left -= 1
+                continue
+
+            dist_to_landmark = distance(x, landmark)
+            
+            # Lower bound on distance to test point using triangle inequality
+            lb_dist = abs(dist_to_landmark - dist_test_to_landmark)
+            
+            if lb_dist > radius:
+                # If lower bound exceeds radius, we can stop expanding left
+                break
+                
+            # Check actual distance to see if point is within radius
+            actual_dist = distance(x, x_test)
+            if actual_dist <= radius:
+                points.append(Point(x, y, dataidx, False))
+            
+            left -= 1
+        
+        # Expand to the right (points after the test point in the sorted list)
+        right = pos + 1
+        while right < len(sorted_aug):
+            x, y, dataidx, is_test = sorted_aug[right]
+            if is_test:
+                right += 1
+                continue
+
+            dist_to_landmark = distance(x, landmark)
+            
+            # Lower bound on distance to test point using triangle inequality
+            lb_dist = abs(dist_to_landmark - dist_test_to_landmark)
+            
+            if lb_dist > radius:
+                # If lower bound exceeds radius, we can stop expanding right
+                break
+                
+            # Check actual distance to see if point is within radius
+            actual_dist = distance(x, x_test)
+            if actual_dist <= radius:
+                points.append(Point(x, y, dataidx, False))
+            
+            right += 1
+
+        return points
+
     def build_ball(self, pt_test, i, landmark):
         """
         Build a ball of radius i around z_test along the sorted augmented list.
@@ -421,6 +492,54 @@ class BallExpander:
             #print(f"lbs_point[{data_idx}]={lbs_point[data_idx]}, ups_point[{data_idx}]={ups_point[data_idx]}")
 
         return lbs_point, ups_point
+
+
+def shapley_tknn_expand(D, Z_test, K, radius, kernel_fn, center_type="kcenter", n_clst=25):
+    """
+    Compute truncated KNN Shapley values using landmark-based ball expansion.
+    The difference is that we don't guess the ball radius, but expand the ball until a given radius
+
+    TODO: skip those landmarks
+    """
+    if not Z_test:
+        return np.zeros(len(D))
+    
+    # Cluster the test points into n_clst clusters by k-center algorithm
+    start = time.time()
+    if center_type == "kcenter":
+        clusters, testidx2center = kcenter(Z_test, n_clst)
+    elif center_type == "random":
+        clusters, testidx2center = random_center(Z_test, n_clst)
+    else:
+        raise ValueError(f"Invalid center type: {center_type}")
+    end = time.time()
+    print(f"{center_type} took {end - start:.2f} seconds")
+
+    # Compute distances to landmark (center) and sort
+    start = time.time()
+    expander = BallExpander(D, Z_test, kernel_fn)
+    expander.build_landmarks(clusters, testidx2center, K)
+    end = time.time()
+    print(f"landmark sorting took {end - start:.2f} seconds")
+        
+    shapley_values = np.zeros(len(D))
+    n_cluster = 0
+    for i in range(len(Z_test)):
+        z_test = Z_test[i]
+        landmark = Z_test[testidx2center[i]][0]
+        cluster = expander.build_ball_by_radius(Point(*z_test, i, True), radius, landmark)
+        cluster_D = [(pt.x, pt.y) for pt in cluster]
+        cluster_Didx = [pt.idx for pt in cluster]
+        s = shapley_bf_single(cluster_D, Z_test[i], K, kernel_fn, radius=radius)
+        s_full = np.zeros(len(D))
+        for j, data_idx in enumerate(cluster_Didx):
+            shapley_values[data_idx] += s[j]
+            s_full[data_idx] = s[j]
+
+        n_cluster += len(cluster)
+    print(f"avg n_cluster/D={n_cluster / len(Z_test) / len(D):.6f}")
+    
+    return shapley_values / len(Z_test)
 
 
 def shapley_top(D, Z_test, t, K, kernel_fn, t_ub=None, center_type="kcenter", n_clst=25, i_start=64, tol_topt=1e-3, tol_ball=1e-6):
