@@ -248,7 +248,7 @@ class BallExpander:
         # Create augmented list with both training and test points
         self.augmented = [Point(*z, idx, True) for idx, z in enumerate(Z_test)] + [Point(*z, idx, False) for idx, z in enumerate(D)]
 
-    def build_landmarks(self, clusters, testidx2center, K):
+    def build_landmarks(self, clusters, testidx2center, K, no_scoring=False):
         """
         Compute distances to each landmark and sort the augmented list.
         """
@@ -268,27 +268,28 @@ class BallExpander:
                     self.testidx2augidx[z.idx] = idx
 
             # Compute Shapley values for landmarks by recursive formula
-            self.test_stops[idx_center] = True # skip the landmark in future ball expansion
-            sorted_w = [self.kernel_fn(distances[i]) for i in sorted_inds]
-            cnt = 0
-            s_prev, w_prev = None, None
-            y_test = self.Z_test[idx_center][1]
-            for z, w in zip(sorted_aug[::-1], sorted_w[::-1]):
-                if z.is_test:
-                    continue
+            if not no_scoring:
+                self.test_stops[idx_center] = True # skip the landmark in future ball expansion
+                sorted_w = [self.kernel_fn(distances[i]) for i in sorted_inds]
+                cnt = 0
+                s_prev, w_prev = None, None
+                y_test = self.Z_test[idx_center][1]
+                for z, w in zip(sorted_aug[::-1], sorted_w[::-1]):
+                    if z.is_test:
+                        continue
 
-                i = len(self.D) - cnt
-                w = w * (1 if z.y == y_test else 0)
-                if cnt == 0:
-                    s = w * K / i
-                else:
-                    s = s_prev + min(K, i) / i * (w - w_prev)
+                    i = len(self.D) - cnt
+                    w = w * (1 if z.y == y_test else 0)
+                    if cnt == 0:
+                        s = w * K / i
+                    else:
+                        s = s_prev + min(K, i) / i * (w - w_prev)
 
-                self.lbs_diff_point_fixed[z.idx] += s
-                self.ups_diff_point_fixed[z.idx] += s
+                    self.lbs_diff_point_fixed[z.idx] += s
+                    self.ups_diff_point_fixed[z.idx] += s
 
-                cnt += 1
-                s_prev, w_prev = s, w
+                    cnt += 1
+                    s_prev, w_prev = s, w
 
     def build_ball_by_radius(self, pt_test, radius, landmark):
         """
@@ -310,6 +311,7 @@ class BallExpander:
         
         # Get distance from test point to landmark
         dist_test_to_landmark = distance(x_test, landmark)
+        distances = []
 
         # Expand to the left (points before the test point in the sorted list)
         left = pos - 1
@@ -332,6 +334,7 @@ class BallExpander:
             actual_dist = distance(x, x_test)
             if actual_dist <= radius:
                 points.append(Point(x, y, dataidx, False))
+                distances.append(actual_dist)
             
             left -= 1
         
@@ -356,10 +359,11 @@ class BallExpander:
             actual_dist = distance(x, x_test)
             if actual_dist <= radius:
                 points.append(Point(x, y, dataidx, False))
+                distances.append(actual_dist)
             
             right += 1
 
-        return points
+        return points, distances
 
     def build_ball(self, pt_test, i, landmark):
         """
@@ -518,7 +522,7 @@ def shapley_tknn_expand(D, Z_test, K, radius, kernel_fn, center_type="kcenter", 
     # Compute distances to landmark (center) and sort
     start = time.time()
     expander = BallExpander(D, Z_test, kernel_fn)
-    expander.build_landmarks(clusters, testidx2center, K)
+    expander.build_landmarks(clusters, testidx2center, K, no_scoring=True)
     end = time.time()
     print(f"landmark sorting took {end - start:.2f} seconds")
         
@@ -527,12 +531,12 @@ def shapley_tknn_expand(D, Z_test, K, radius, kernel_fn, center_type="kcenter", 
     for i in range(len(Z_test)):
         z_test = Z_test[i]
         landmark = Z_test[testidx2center[i]][0]
-        cluster = expander.build_ball_by_radius(Point(*z_test, i, True), radius, landmark)
+        cluster, distances = expander.build_ball_by_radius(Point(*z_test, i, True), radius, landmark)
         # sort cluster by idx, to match the exact order of D, or it may yield discrepancy against shapley_bf_single(D); though not necessary in practice
-        cluster = sorted(cluster, key=lambda x: x.idx)
+        # cluster = sorted(cluster, key=lambda x: x.idx)
         cluster_D = [(pt.x, pt.y) for pt in cluster]
         cluster_Didx = [pt.idx for pt in cluster]
-        s = shapley_bf_single(cluster_D, z_test, K, kernel_fn, radius=radius)
+        s = shapley_bf_single(cluster_D, z_test, K, kernel_fn, radius=radius, distances=distances)
         for j, data_idx in enumerate(cluster_Didx):
             shapley_values[data_idx] += s[j]
         

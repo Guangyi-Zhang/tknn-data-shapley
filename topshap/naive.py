@@ -23,7 +23,7 @@ def shapley_bf(D, Z_test, K, kernel_fn, normalize=False, radius=None):
     return shapley_values / n_test
     
 
-def shapley_bf_single(D, z_test, K, kernel_fn, return_weights=False, radius=None):
+def shapley_bf_single(D, z_test, K, kernel_fn, return_weights=False, radius=None, distances=None):
     """
     Compute Shapley values for weighted KNN using recursive formula.
     
@@ -42,7 +42,10 @@ def shapley_bf_single(D, z_test, K, kernel_fn, return_weights=False, radius=None
         return np.array([])
     
     # Calculate distances and sort
-    dxy = [(distance(x, x_test), x, y) for x, y in D]
+    if distances is None:
+        dxy = [(distance(x, x_test), x, y) for x, y in D]
+    else:
+        dxy = [(d, x, y) for d, (x, y) in zip(distances, D)]
     sorted_dxy_idx = sorted(range(len(dxy)), key=lambda i: dxy[i][0]) # argsort
     if radius is not None:
         sorted_dxy_idx = [i for i in sorted_dxy_idx if dxy[i][0] <= radius]
