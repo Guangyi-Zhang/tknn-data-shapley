@@ -8,6 +8,7 @@ from topshap.naive import shapley_bf_single
 
 
 Point = namedtuple('Point', ['x', 'y', 'idx', 'is_test'])
+PointDist = namedtuple('PointDist', ['x', 'y', 'idx', 'is_test', 'dist'])
 
 
 def random_center(Z_test, n_clst):
@@ -178,14 +179,8 @@ def shapley_tknn(D, Z_test, K, radius, kernel_fn, n_clst=10):
     if not isinstance(Z_test, list):
         Z_test = [Z_test]
     
-    # stack D and Z_test
-    #Z_test_D = [z for idx, z in enumerate(Z_test)] + [z for idx, z in enumerate(D)]
-
-    # k-center clustering over D and Z_test
+    # k-center clustering over Z_test
     start_time = time.process_time()
-    #clusters, testidx2center = kcenter(Z_test_D, n_clst, be_robust=True)
-    #clusters, testidx2center = kcenter(Z_test_D, n_clst, min_radius=2*radius)
-    #clusters, testidx2center = kmeans(Z_test_D, n_clst)
     clusters, testidx2center = kcenter(Z_test, n_clst)
 
     # assign each data point to the nearest cluster center
@@ -199,10 +194,6 @@ def shapley_tknn(D, Z_test, K, radius, kernel_fn, n_clst=10):
 
     runtime_kcenter = time.process_time() - start_time
     print(f"kcenter/kmeans took {runtime_kcenter:.2f} seconds with #clusters={len(clusters)}")
-
-    # Create a new clusters_D from clusters, by dropping the test points, and recover the true data_idx
-    #clusters_Didx = {ci: [(i - len(Z_test)) for i in cluster if i >= len(Z_test)] for ci, cluster in clusters.items()}
-    #clusters_D = {ci: [D[i] for i in cluster] for ci, cluster in clusters_Didx.items()}
     print(f"sizes of clusters: {[len(cluster) for cluster in clusters_D.values()]} and ratio={sum([len(cluster) for cluster in clusters_D.values()]) / len(D)}")
 
     # Compute Shapley values for each cluster
@@ -257,7 +248,7 @@ class BallExpander:
             landmark = self.Z_test[idx_center][0]
             distances = [distance(x, landmark) for x, _, _, _ in self.augmented]
             sorted_inds = np.argsort(distances)
-            sorted_aug = [self.augmented[i] for i in sorted_inds]
+            sorted_aug = [PointDist(*self.augmented[i], distances[i]) for i in sorted_inds]
 
             for test_idx in cluster:
                 self.testidx2aug[test_idx] = sorted_aug
@@ -306,23 +297,22 @@ class BallExpander:
         x_test, y_test = pt_test.x, pt_test.y
         sorted_aug = self.testidx2aug[pt_test.idx]
         pos = self.testidx2augidx[pt_test.idx]
+        pt_test_aug = sorted_aug[pos]
         
         points = []
         
         # Get distance from test point to landmark
-        dist_test_to_landmark = distance(x_test, landmark)
+        dist_test_to_landmark = pt_test_aug.dist
         distances = []
 
         # Expand to the left (points before the test point in the sorted list)
         left = pos - 1
         while left >= 0:
-            x, y, dataidx, is_test = sorted_aug[left]
+            x, y, dataidx, is_test, dist_to_landmark = sorted_aug[left]
             if is_test:
                 left -= 1
                 continue
 
-            dist_to_landmark = distance(x, landmark)
-            
             # Lower bound on distance to test point using triangle inequality
             lb_dist = abs(dist_to_landmark - dist_test_to_landmark)
             
@@ -341,12 +331,10 @@ class BallExpander:
         # Expand to the right (points after the test point in the sorted list)
         right = pos + 1
         while right < len(sorted_aug):
-            x, y, dataidx, is_test = sorted_aug[right]
+            x, y, dataidx, is_test, dist_to_landmark = sorted_aug[right]
             if is_test:
                 right += 1
                 continue
-
-            dist_to_landmark = distance(x, landmark)
             
             # Lower bound on distance to test point using triangle inequality
             lb_dist = abs(dist_to_landmark - dist_test_to_landmark)
@@ -372,6 +360,8 @@ class BallExpander:
         x_test, y_test = pt_test.x, pt_test.y
         sorted_aug = self.testidx2aug[pt_test.idx]
         pos = self.testidx2augidx[pt_test.idx]
+        pt_test_aug = sorted_aug[pos]
+        dist_test_to_landmark = pt_test_aug.dist
         
         # Get ball boundaries
         start = max(0, pos - i)
@@ -380,21 +370,17 @@ class BallExpander:
         
         # Collect new data points in expanded ball
         for idx in range(start, end):
-            x, y, dataidx, is_test = sorted_aug[idx]
+            x, y, dataidx, is_test, dist_to_landmark = sorted_aug[idx]
             if not is_test:
                 points.append(Point(x, y, dataidx, False))
 
         # Compute a lower bound on dist_to_test for points outside the ball, left part
         dist_left, dist_right = 0, 0
-        x, y, dataidx, is_test = sorted_aug[start]
-        dist_to_landmark = distance(x, landmark)
-        dist_test_to_landmark = distance(x_test, landmark)
+        x, y, dataidx, is_test, dist_to_landmark = sorted_aug[start]
         dist_left = abs(dist_to_landmark - dist_test_to_landmark)
 
         # Compute a lower bound on dist_to_test for points outside the ball, right part
-        x, y, dataidx, is_test = sorted_aug[end-1]
-        dist_to_landmark = distance(x, landmark)
-        dist_test_to_landmark = distance(x_test, landmark)
+        x, y, dataidx, is_test, dist_to_landmark = sorted_aug[end-1]
         dist_right = abs(dist_to_landmark - dist_test_to_landmark)
         
         dist_radius = min(dist_left if start > 0 else float('inf'), 
@@ -528,12 +514,16 @@ def shapley_tknn_expand(D, Z_test, K, radius, kernel_fn, center_type="kcenter", 
         
     shapley_values = np.zeros(len(D))
     n_cluster = 0
-    for i in range(len(Z_test)):
-        z_test = Z_test[i]
+    for i, z_test in enumerate(Z_test):
         landmark = Z_test[testidx2center[i]][0]
         cluster, distances = expander.build_ball_by_radius(Point(*z_test, i, True), radius, landmark)
-        # sort cluster by idx, to match the exact order of D, or it may yield discrepancy against shapley_bf_single(D); though not necessary in practice
-        # cluster = sorted(cluster, key=lambda x: x.idx)
+        
+        # sort cluster by idx, to match the exact order of D, or it may yield discrepancy against shapley_bf_single(D); 
+        # needed only for tests, not necessary in practice
+        # idxes = np.argsort([x.idx for x in cluster])
+        # cluster = [cluster[i] for i in idxes]
+        # distances = [distances[i] for i in idxes]
+
         cluster_D = [(pt.x, pt.y) for pt in cluster]
         cluster_Didx = [pt.idx for pt in cluster]
         s = shapley_bf_single(cluster_D, z_test, K, kernel_fn, radius=radius, distances=distances)

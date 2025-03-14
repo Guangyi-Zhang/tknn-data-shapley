@@ -3,7 +3,7 @@ import numpy as np
 from functools import partial
 
 from topshap.helper import distance, kernel_value
-from topshap.topt import BallExpander, Point, shapley_top, kcenter, kcenter_naive, shapley_tknn, kmeans, shapley_tknn_expand
+from topshap.topt import BallExpander, Point, PointDist, shapley_top, kcenter, kcenter_naive, shapley_tknn, kmeans, shapley_tknn_expand
 from topshap.naive import shapley_bf
 
 
@@ -112,11 +112,11 @@ def test_build_ball():
     
     # Create sorted augmented list with test point first
     sorted_aug = [
-        Point(x=np.array([0.0]), y=1, idx=1, is_test=False),
-        Point(x=np.array([0.5]), y=1, idx=0, is_test=True), # test point
-        Point(x=np.array([1.5]), y=0, idx=2, is_test=False),
-        Point(x=np.array([2.0]), y=1, idx=3, is_test=False),
-        Point(x=np.array([2.5]), y=1, idx=4, is_test=True)
+        PointDist(x=np.array([0.0]), y=1, idx=1, is_test=False, dist=0),
+        PointDist(x=np.array([0.5]), y=1, idx=0, is_test=True, dist=0.5), # test point
+        PointDist(x=np.array([1.5]), y=0, idx=2, is_test=False, dist=1.5),
+        PointDist(x=np.array([2.0]), y=1, idx=3, is_test=False, dist=2),
+        PointDist(x=np.array([2.5]), y=1, idx=4, is_test=True, dist=2.5)
     ]
     landmark = np.array([0.0])
     
@@ -207,7 +207,7 @@ def test_shapley_top():
     assert np.all(top_idx == [0])
 
 
-def test_shapley_top_2dplanes():
+def test_shapley_2dplanes():
     # Test on 2dplanes.arff
     np.random.seed(42)
     
@@ -235,6 +235,23 @@ def test_shapley_top_2dplanes():
     # too many after top-9 are equal, so we only check the first 9
     assert topt[0] == 5706
     assert set(topt[1:9]) == set([10495, 17226, 29540, 22601, 35218, 10265, 21305, 8716])
+
+    # test shapley_tknn_expand
+    K = 5
+    n_clst = 10
+
+    # split the data into D and Z_test
+    np.random.shuffle(data)
+    ratio = 0.99
+    D = data[:int(ratio*len(data))]
+    Z_test = data[int(ratio*len(data)):]
+    D = [(D[i, :-1], int(D[i, -1])) for i in range(D.shape[0])]
+    Z_test = [(Z_test[i, :-1], int(Z_test[i, -1])) for i in range(Z_test.shape[0])]
+
+    values = shapley_tknn_expand(D, Z_test, K, radius=2, kernel_fn=lambda d: 1, n_clst=n_clst)
+    # compare with shapley_bf
+    values_true = shapley_bf(D, Z_test, K=K, kernel_fn=lambda d: 1, radius=2)
+    assert np.allclose(values, values_true, atol=1e-03)
 
 
 def test_shapley():
