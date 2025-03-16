@@ -306,11 +306,9 @@ class BallExpander:
         distances = []
 
         # Expand to the left (points before the test point in the sorted list)
-        left = pos - 1
-        while left >= 0:
-            x, y, dataidx, is_test, dist_to_landmark = sorted_aug[left]
+        for item in sorted_aug[pos-1::-1]: # reverse order start from var left
+            x, y, dataidx, is_test, dist_to_landmark = item
             if is_test:
-                left -= 1
                 continue
 
             # Lower bound on distance to test point using triangle inequality
@@ -326,14 +324,11 @@ class BallExpander:
                 points.append(Point(x, y, dataidx, False))
                 distances.append(actual_dist)
             
-            left -= 1
-        
+            
         # Expand to the right (points after the test point in the sorted list)
-        right = pos + 1
-        while right < len(sorted_aug):
-            x, y, dataidx, is_test, dist_to_landmark = sorted_aug[right]
+        for item in sorted_aug[pos+1:]:
+            x, y, dataidx, is_test, dist_to_landmark = item
             if is_test:
-                right += 1
                 continue
             
             # Lower bound on distance to test point using triangle inequality
@@ -349,8 +344,6 @@ class BallExpander:
                 points.append(Point(x, y, dataidx, False))
                 distances.append(actual_dist)
             
-            right += 1
-
         return points, distances
 
     def build_ball(self, pt_test, i, landmark):
