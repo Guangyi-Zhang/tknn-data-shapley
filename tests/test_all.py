@@ -3,7 +3,7 @@ import numpy as np
 from functools import partial
 
 from topshap.helper import distance, kernel_value
-from topshap.topt import BallExpander, Point, PointDist, shapley_top, kcenter, kcenter_naive, shapley_tknn, kmeans, shapley_tknn_expand
+from topshap.topt import BallExpander, Point, shapley_top, kcenter, kcenter_naive, shapley_tknn, kmeans, shapley_tknn_expand
 from topshap.naive import shapley_bf
 
 
@@ -112,11 +112,11 @@ def test_build_ball():
     
     # Create sorted augmented list with test point first
     sorted_aug = [
-        PointDist(x=np.array([0.0]), y=1, idx=1, is_test=False, dist=0),
-        PointDist(x=np.array([0.5]), y=1, idx=0, is_test=True, dist=0.5), # test point
-        PointDist(x=np.array([1.5]), y=0, idx=2, is_test=False, dist=1.5),
-        PointDist(x=np.array([2.0]), y=1, idx=3, is_test=False, dist=2),
-        PointDist(x=np.array([2.5]), y=1, idx=4, is_test=True, dist=2.5)
+        (np.array([0.0]), 1, 1, False, 0),        # (x, y, idx, is_test, dist)
+        (np.array([0.5]), 1, 0, True, 0.5),       # test point
+        (np.array([1.5]), 0, 2, False, 1.5),
+        (np.array([2.0]), 1, 3, False, 2),
+        (np.array([2.5]), 1, 4, True, 2.5)
     ]
     landmark = np.array([0.0])
     

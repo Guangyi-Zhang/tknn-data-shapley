@@ -8,7 +8,6 @@ from topshap.naive import shapley_bf_single
 
 
 Point = namedtuple('Point', ['x', 'y', 'idx', 'is_test'])
-PointDist = namedtuple('PointDist', ['x', 'y', 'idx', 'is_test', 'dist'])
 
 
 def random_center(Z_test, n_clst):
@@ -248,15 +247,15 @@ class BallExpander:
             landmark = self.Z_test[idx_center][0]
             distances = [distance(x, landmark) for x, _, _, _ in self.augmented]
             sorted_inds = np.argsort(distances)
-            sorted_aug = [PointDist(*self.augmented[i], distances[i]) for i in sorted_inds]
+            sorted_aug = [(self.augmented[i].x, self.augmented[i].y, self.augmented[i].idx, self.augmented[i].is_test, distances[i]) for i in sorted_inds]
 
             for test_idx in cluster:
                 self.testidx2aug[test_idx] = sorted_aug
 
             # Create data index mapping and test positions
             for idx, z in enumerate(sorted_aug):
-                if z.is_test and testidx2center[z.idx] == idx_center:
-                    self.testidx2augidx[z.idx] = idx
+                if z[3] and testidx2center[z[2]] == idx_center:  # z[3] is is_test, z[2] is idx
+                    self.testidx2augidx[z[2]] = idx
 
             # Compute Shapley values for landmarks by recursive formula
             if not no_scoring:
@@ -266,18 +265,18 @@ class BallExpander:
                 s_prev, w_prev = None, None
                 y_test = self.Z_test[idx_center][1]
                 for z, w in zip(sorted_aug[::-1], sorted_w[::-1]):
-                    if z.is_test:
+                    if z[3]:  # z[3] is is_test
                         continue
 
                     i = len(self.D) - cnt
-                    w = w * (1 if z.y == y_test else 0)
+                    w = w * (1 if z[1] == y_test else 0)  # z[1] is y
                     if cnt == 0:
                         s = w * K / i
                     else:
                         s = s_prev + min(K, i) / i * (w - w_prev)
 
-                    self.lbs_diff_point_fixed[z.idx] += s
-                    self.ups_diff_point_fixed[z.idx] += s
+                    self.lbs_diff_point_fixed[z[2]] += s  # z[2] is idx
+                    self.ups_diff_point_fixed[z[2]] += s
 
                     cnt += 1
                     s_prev, w_prev = s, w
@@ -302,7 +301,7 @@ class BallExpander:
         points = []
         
         # Get distance from test point to landmark
-        dist_test_to_landmark = pt_test_aug.dist
+        dist_test_to_landmark = pt_test_aug[4]  # dist in tuple at index 4
         distances = []
 
         # Expand to the left (points before the test point in the sorted list)
@@ -354,7 +353,7 @@ class BallExpander:
         sorted_aug = self.testidx2aug[pt_test.idx]
         pos = self.testidx2augidx[pt_test.idx]
         pt_test_aug = sorted_aug[pos]
-        dist_test_to_landmark = pt_test_aug.dist
+        dist_test_to_landmark = pt_test_aug[4]  # dist in tuple at index 4
         
         # Get ball boundaries
         start = max(0, pos - i)
