@@ -46,22 +46,26 @@ def shapley_bf_single(D, z_test, K, kernel_fn, return_weights=False, radius=None
         dxy = [(distance(x, x_test), x, y) for x, y in D]
     else:
         dxy = [(d, x, y) for d, (x, y) in zip(distances, D)]
-    sorted_dxy_idx = sorted(range(len(dxy)), key=lambda i: dxy[i][0]) # argsort
+    
     if radius is not None:
-        sorted_dxy_idx = [i for i in sorted_dxy_idx if dxy[i][0] <= radius]
-        if len(sorted_dxy_idx) == 0:
+        dxy_idx = [i for i, el in enumerate(dxy) if el[0] <= radius]
+        if len(dxy_idx) == 0:
             return np.zeros(n)
+    else:
+        dxy_idx = list(range(len(dxy)))
+        
+    sorted_dxy_idx = sorted(dxy_idx, key=lambda i: dxy[i][0]) # argsort
     
     # Extract weights and label matches
-    w = [kernel_fn(d) for d, _, _ in dxy]
-    y_match = [1 if y == y_test else 0 for _, _, y in dxy]
+    w = [kernel_fn(dxy[i][0]) for i in sorted_dxy_idx]
+    y_match = [1 if dxy[i][2] == y_test else 0 for i in sorted_dxy_idx]
     
     # Initialize Shapley values array
     s = np.zeros(n)
     
     # Base case: farthest point
     idx_n = sorted_dxy_idx[-1]
-    s[idx_n] = (K/len(sorted_dxy_idx)) * w[idx_n] * y_match[idx_n]
+    s[idx_n] = (K/len(sorted_dxy_idx)) * w[-1] * y_match[-1]
     
     # Recursive calculation from 2nd farthest to nearest
     for j in range(len(sorted_dxy_idx)-2, -1, -1):
@@ -69,7 +73,7 @@ def shapley_bf_single(D, z_test, K, kernel_fn, return_weights=False, radius=None
         idx_j = sorted_dxy_idx[j]
         idx_j_plus_1 = sorted_dxy_idx[j+1]
         term = (min(K, i_plus_1)/i_plus_1) * (
-            w[idx_j] * y_match[idx_j] - w[idx_j_plus_1] * y_match[idx_j_plus_1]
+            w[j] * y_match[j] - w[j+1] * y_match[j+1]
         )
         s[idx_j] = s[idx_j_plus_1] + term
         

@@ -276,3 +276,9 @@ def test_shapley():
     answer = [0.8374, 0.0902, -0.0451]
 
     assert np.allclose(shapley_values, answer, atol=1e-03)
+
+    # Test with radius
+    shapley_values = shapley_bf(D, z_test, K=2, kernel_fn=partial(kernel_value, sigma=1), radius=1.1)
+    answer = [0.8824969, 0, 0]
+
+    assert np.allclose(shapley_values, answer, atol=1e-03)
