@@ -7,9 +7,6 @@ from topshap.helper import distance, kernel_value
 from topshap.naive import shapley_bf_single
 
 
-Point = namedtuple('Point', ['x', 'y', 'idx', 'is_test'])
-
-
 def random_center(Z_test, n_clst):
     """
     Randomly select n_clst test points as centers.
@@ -236,7 +233,7 @@ class BallExpander:
         self.tol = tol
 
         # Create augmented list with both training and test points
-        self.augmented = [Point(*z, idx, True) for idx, z in enumerate(Z_test)] + [Point(*z, idx, False) for idx, z in enumerate(D)]
+        self.augmented = [(z[0], z[1], idx, True) for idx, z in enumerate(Z_test)] + [(z[0], z[1], idx, False) for idx, z in enumerate(D)]
 
     def build_landmarks(self, clusters, testidx2center, K, no_scoring=False):
         """
@@ -247,7 +244,7 @@ class BallExpander:
             landmark = self.Z_test[idx_center][0]
             distances = [distance(x, landmark) for x, _, _, _ in self.augmented]
             sorted_inds = np.argsort(distances)
-            sorted_aug = [(self.augmented[i].x, self.augmented[i].y, self.augmented[i].idx, self.augmented[i].is_test, distances[i]) for i in sorted_inds]
+            sorted_aug = [(*self.augmented[i], distances[i]) for i in sorted_inds]
 
             for test_idx in cluster:
                 self.testidx2aug[test_idx] = sorted_aug
@@ -286,16 +283,16 @@ class BallExpander:
         Build a ball of radius (by distance) around z_test along the sorted augmented list.
         
         Args:
-            pt_test: Point namedtuple containing test point information
+            pt_test: Tuple containing test point information (x, y, idx, is_test)
             radius: Maximum distance from test point to include in ball
             landmark: Coordinates of the landmark (center) of the cluster
             
         Returns:
-            List of Point objects within the specified radius
+            List of tuples within the specified radius
         """
-        x_test, y_test = pt_test.x, pt_test.y
-        sorted_aug = self.testidx2aug[pt_test.idx]
-        pos = self.testidx2augidx[pt_test.idx]
+        x_test, y_test, test_idx, _ = pt_test
+        sorted_aug = self.testidx2aug[test_idx]
+        pos = self.testidx2augidx[test_idx]
         pt_test_aug = sorted_aug[pos]
         
         points = []
@@ -320,7 +317,7 @@ class BallExpander:
             # Check actual distance to see if point is within radius
             actual_dist = distance(x, x_test)
             if actual_dist <= radius:
-                points.append(Point(x, y, dataidx, False))
+                points.append((x, y, dataidx, False))
                 distances.append(actual_dist)
             
             
@@ -340,7 +337,7 @@ class BallExpander:
             # Check actual distance to see if point is within radius
             actual_dist = distance(x, x_test)
             if actual_dist <= radius:
-                points.append(Point(x, y, dataidx, False))
+                points.append(item)
                 distances.append(actual_dist)
             
         return points, distances
@@ -349,9 +346,9 @@ class BallExpander:
         """
         Build a ball of radius i around z_test along the sorted augmented list.
         """
-        x_test, y_test = pt_test.x, pt_test.y
-        sorted_aug = self.testidx2aug[pt_test.idx]
-        pos = self.testidx2augidx[pt_test.idx]
+        x_test, y_test, test_idx, _ = pt_test
+        sorted_aug = self.testidx2aug[test_idx]
+        pos = self.testidx2augidx[test_idx]
         pt_test_aug = sorted_aug[pos]
         dist_test_to_landmark = pt_test_aug[4]  # dist in tuple at index 4
         
@@ -364,7 +361,7 @@ class BallExpander:
         for idx in range(start, end):
             x, y, dataidx, is_test, dist_to_landmark = sorted_aug[idx]
             if not is_test:
-                points.append(Point(x, y, dataidx, False))
+                points.append((x, y, dataidx, False))
 
         # Compute a lower bound on dist_to_test for points outside the ball, left part
         dist_left, dist_right = 0, 0
@@ -391,7 +388,7 @@ class BallExpander:
             x_test, y_test = z_test
             idx_center = self.testidx2center[test_idx]
             landmark = self.Z_test[idx_center][0]
-            points, dist_radius = self.build_ball(Point(*z_test, test_idx, True), i, landmark)
+            points, dist_radius = self.build_ball((x_test, y_test, test_idx, True), i, landmark)
             #print(f"i={i}, dist_radius={dist_radius}, processed[{test_idx}].ids={processed[test_idx].ids}")
 
             # Compute distances to current test point
@@ -508,7 +505,7 @@ def shapley_tknn_expand(D, Z_test, K, radius, kernel_fn, center_type="kcenter", 
     n_cluster = 0
     for i, z_test in enumerate(Z_test):
         landmark = Z_test[testidx2center[i]][0]
-        cluster, distances = expander.build_ball_by_radius(Point(*z_test, i, True), radius, landmark)
+        cluster, distances = expander.build_ball_by_radius((z_test[0], z_test[1], i, True), radius, landmark)
         
         # sort cluster by idx, to match the exact order of D, or it may yield discrepancy against shapley_bf_single(D); 
         # needed only for tests, not necessary in practice
@@ -516,8 +513,8 @@ def shapley_tknn_expand(D, Z_test, K, radius, kernel_fn, center_type="kcenter", 
         # cluster = [cluster[i] for i in idxes]
         # distances = [distances[i] for i in idxes]
 
-        cluster_D = [(pt.x, pt.y) for pt in cluster]
-        cluster_Didx = [pt.idx for pt in cluster]
+        cluster_D = [(pt[0], pt[1]) for pt in cluster]
+        cluster_Didx = [pt[2] for pt in cluster]
         s = shapley_bf_single(cluster_D, z_test, K, kernel_fn, radius=radius, distances=distances)
         for j, data_idx in enumerate(cluster_Didx):
             shapley_values[data_idx] += s[j]

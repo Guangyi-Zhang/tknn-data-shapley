@@ -3,7 +3,7 @@ import numpy as np
 from functools import partial
 
 from topshap.helper import distance, kernel_value
-from topshap.topt import BallExpander, Point, shapley_top, kcenter, kcenter_naive, shapley_tknn, kmeans, shapley_tknn_expand
+from topshap.topt import BallExpander, shapley_top, kcenter, kcenter_naive, shapley_tknn, kmeans, shapley_tknn_expand
 from topshap.naive import shapley_bf
 
 
@@ -108,7 +108,7 @@ def test_kcenter_robust():
 
 
 def test_build_ball():
-    pt_test = Point(x=np.array([0.5]), y=1, idx=0, is_test=True)
+    pt_test = (np.array([0.5]), 1, 0, True)  # (x, y, idx, is_test)
     
     # Create sorted augmented list with test point first
     sorted_aug = [
@@ -127,7 +127,7 @@ def test_build_ball():
     
     # Verify new points added
     assert len(points) == 2
-    new_ids = [p.idx for p in points]
+    new_ids = [p[2] for p in points]
     assert 1 in new_ids
     assert 2 in new_ids
     
@@ -137,7 +137,7 @@ def test_build_ball():
     # Increase radius i
     points, dist_radius = expander.build_ball(pt_test, i=2, landmark=landmark)
     assert len(points) == 3
-    assert 3 in [p.idx for p in points]
+    assert 3 in [p[2] for p in points]
     assert np.isclose(dist_radius, 1.5)
 
     # Increase radius i
