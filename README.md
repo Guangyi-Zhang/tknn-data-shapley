@@ -16,7 +16,7 @@ import numpy as np
 from functools import partial
 
 from topshap.helper import kernel_value
-from topshap.topt import shapley_top
+from topshap.topt import shapley_tknn_expand
 from topshap.naive import shapley_bf
 
 D = [
@@ -26,14 +26,13 @@ D = [
 ]
 Z_test = [(np.array([0.0]), 1)]
 
-# Run the top-t algorithm
-top_idx = shapley_top(D, Z_test, kernel_fn=partial(kernel_value, sigma=1), t=1, K=2, n_clst=1)
-assert top_idx == [0]
+# Run the tknn algorithm
+values = shapley_tknn_expand(D, Z_test, K=2, radius=1, kernel_fn=partial(kernel_value, sigma=1), n_clst=2)
+print(values)
 
 # Run the brute-force algorithm
-shapley_values = shapley_bf(D, Z_test, K=2, kernel_fn=partial(kernel_value, sigma=1))
-answer = [0.8374, 0.0902, -0.0451]
-assert np.allclose(shapley_values, answer, atol=1e-03)
+values = shapley_bf(D, Z_test, K=2, kernel_fn=partial(kernel_value, sigma=1))
+print(values)
 ```
 
 
